@@ -199,9 +199,11 @@ Implemented fields:
 
 - `jgrep_bin`
 - `max_input_bytes`
+- `max_schema_documents`
+- `max_preview_results`
 - `completion_install`
 
-The scripts still leave `default_placement` and `max_schema_documents` to future Herdr-native pane wiring.
+The scripts still leave `default_placement` to future Herdr-native pane wiring.
 
 ## Implementation Slices
 

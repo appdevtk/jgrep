@@ -54,6 +54,22 @@ max_input_bytes() {
   fi
 }
 
+max_schema_documents() {
+  if [ -n "${JGREP_MAX_SCHEMA_DOCUMENTS:-}" ]; then
+    printf '%s\n' "$JGREP_MAX_SCHEMA_DOCUMENTS"
+  else
+    config_value max_schema_documents 500
+  fi
+}
+
+max_preview_results() {
+  if [ -n "${JGREP_MAX_PREVIEW_RESULTS:-}" ]; then
+    printf '%s\n' "$JGREP_MAX_PREVIEW_RESULTS"
+  else
+    config_value max_preview_results 30
+  fi
+}
+
 context_value() {
   key=$1
   [ -n "${HERDR_PLUGIN_CONTEXT_JSON:-}" ] || return 1

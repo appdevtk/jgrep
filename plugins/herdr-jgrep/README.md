@@ -36,6 +36,8 @@ Optional config file:
 # $HERDR_PLUGIN_CONFIG_DIR/config.toml
 jgrep_bin = "jgrep"
 max_input_bytes = "52428800"
+max_schema_documents = "500"
+max_preview_results = "30"
 completion_install = "print"
 ```
 

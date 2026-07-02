@@ -285,7 +285,28 @@ impl ExploreSession {
             .get(self.filter.completion_index)
             .map(String::as_str)
             .unwrap_or("");
-        format!("completion {index}/{total}: {current}")
+        let candidates = self
+            .filter
+            .completions
+            .iter()
+            .take(5)
+            .map(|path| {
+                let types = self
+                    .data
+                    .fields
+                    .iter()
+                    .find(|field| field.path == *path)
+                    .map(|field| field.types.join("|"))
+                    .unwrap_or_default();
+                if types.is_empty() {
+                    path.clone()
+                } else {
+                    format!("{path} [{types}]")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("completion {index}/{total}: {current} | {candidates}")
     }
 
     fn save_filter(&mut self) {

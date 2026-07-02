@@ -7,6 +7,8 @@ plugin_root=${HERDR_PLUGIN_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 state_dir=$(state_dir)
 jgrep_bin=$(jgrep_bin)
 max_input_bytes=$(max_input_bytes)
+max_schema_documents=$(max_schema_documents)
+max_preview_results=$(max_preview_results)
 cleanup_old_selections "$state_dir"
 
 ensure_jgrep "$jgrep_bin"
@@ -35,4 +37,8 @@ fi
 
 check_file_size "$target" "$max_input_bytes"
 export JGREP_LAST_FILTER_FILE=${JGREP_LAST_FILTER_FILE:-"$state_dir/last-filter.jq"}
-exec "$jgrep_bin" explore --max-input-bytes "$max_input_bytes" "$target"
+exec "$jgrep_bin" explore \
+  --max-input-bytes "$max_input_bytes" \
+  --max-schema-documents "$max_schema_documents" \
+  --max-preview-results "$max_preview_results" \
+  "$target"
