@@ -53,10 +53,10 @@ The Java `jgrep`/`ygrep` modules remain in the repository as reference implement
 ### jgrep
 
 ```
-Usage: jgrep [-rclsnhV] [-f=FILE] [--pretty] [--color-level] [--color-level-field FIELD] [--no-color] [FILTER] [FILE...]
+Usage: jgrep [-rclsnhV] [-f=FILE] [--pretty] [-C|--color-level] [--color-level-field FIELD] [--no-color] [FILTER] [FILE...]
 
   FILTER   jq filter expression (e.g. '.name', 'select(.age > 18)', '.items[]').
-           Required unless -f is used.
+           Defaults to '.' when omitted or when the first positional argument is an existing path.
   FILE     JSON, NDJSON, or YAML files to search. Reads from stdin if omitted.
 
 Options:
@@ -67,7 +67,7 @@ Options:
   -n, --null-input           Use null as input (no file needed; evaluate filter directly)
   -f, --from-file=FILE       Read filter expression from a file
       --pretty               Pretty-print JSON output
-      --color-level          Color each output line by log level
+  -C, --color-level          Color each output line by log level
       --color-level-field    Field used by --color-level (e.g. app.level)
       --no-color             Disable colored output (also respects $NO_COLOR)
   -h, --help                 Show this help message
@@ -86,8 +86,15 @@ jgrep 'select(.age > 18)' users.ndjson
 # Extract nested field
 jgrep '.address.city' customers.json
 
+# Convert JSON/YAML to JSON with the default identity filter
+jgrep config.yaml
+cat config.yaml | jgrep
+
 # Find files containing errors
 jgrep -l 'select(.level == "ERROR")' logs/*.json
+
+# Color structured logs by their level field
+jgrep -C logs.ndjson
 
 # Count active items per file
 jgrep -rc 'select(.active == true)' ./data/

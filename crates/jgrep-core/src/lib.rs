@@ -124,7 +124,7 @@ fn resolve_filter(cli: &Cli, err: &mut dyn Write) -> Result<String, ()> {
             });
     }
 
-    cli.filter.clone().ok_or_else(|| {
+    cli.filter_expression().ok_or_else(|| {
         let _ = writeln!(
             err,
             "{NAME}: filter expression required (or use -f to read from file)"

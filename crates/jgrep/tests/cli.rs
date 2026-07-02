@@ -54,6 +54,36 @@ fn reads_yaml_with_same_command() {
 }
 
 #[test]
+fn defaults_to_identity_filter_for_existing_json_or_yaml_path() {
+    let dir = tempdir().unwrap();
+    let json = dir.path().join("data.json");
+    let yaml = dir.path().join("data.yaml");
+    fs::write(&json, r#"{"name":"Alice"}"#).unwrap();
+    fs::write(&yaml, "name: Bob\n").unwrap();
+
+    jgrep()
+        .arg(json.to_str().unwrap())
+        .assert()
+        .success()
+        .stdout("{\"name\":\"Alice\"}\n");
+
+    jgrep()
+        .arg(yaml.to_str().unwrap())
+        .assert()
+        .success()
+        .stdout("{\"name\":\"Bob\"}\n");
+}
+
+#[test]
+fn defaults_to_identity_filter_for_stdin() {
+    jgrep()
+        .write_stdin("name: Alice\n")
+        .assert()
+        .success()
+        .stdout("{\"name\":\"Alice\"}\n");
+}
+
+#[test]
 fn reads_yaml_multi_documents() {
     let dir = tempdir().unwrap();
     let file = dir.path().join("data.yml");
@@ -206,6 +236,22 @@ fn recursive_search_includes_json_and_yaml() {
 }
 
 #[test]
+fn recursive_search_can_use_default_filter() {
+    let dir = tempdir().unwrap();
+    let sub = dir.path().join("sub");
+    fs::create_dir(&sub).unwrap();
+    fs::write(dir.path().join("a.json"), r#"{"v":1}"#).unwrap();
+    fs::write(sub.join("b.yaml"), "v: 2\n").unwrap();
+
+    jgrep()
+        .args(["-r", dir.path().to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("a.json:{\"v\":1}"))
+        .stdout(predicate::str::contains("b.yaml:{\"v\":2}"));
+}
+
+#[test]
 fn directory_without_recursive_is_error() {
     let dir = tempdir().unwrap();
 
@@ -273,4 +319,17 @@ fn color_level_can_use_nested_field_and_no_color_disables_it() {
         .assert()
         .success()
         .stdout(predicate::str::contains("\u{1b}[33m").not());
+}
+
+#[test]
+fn color_level_short_flag_works_with_default_filter() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("logs.json");
+    fs::write(&file, r#"{"level":"ERROR","message":"boom"}"#).unwrap();
+
+    jgrep()
+        .args(["-C", file.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""message":"boom""#));
 }

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{ArgAction, Parser, Subcommand};
 
@@ -54,7 +54,11 @@ pub struct Cli {
     #[arg(long = "no-color", help = "Disable colored output")]
     pub no_color: bool,
 
-    #[arg(long = "color-level", help = "Color each output line by log level")]
+    #[arg(
+        short = 'C',
+        long = "color-level",
+        help = "Color each output line by log level"
+    )]
     pub color_level: bool,
 
     #[arg(
@@ -66,7 +70,7 @@ pub struct Cli {
 
     #[arg(
         index = 1,
-        help = "Required jq filter, except when using a subcommand or -f"
+        help = "jq filter; defaults to '.' when omitted or when this argument is an existing path"
     )]
     pub filter: Option<String>,
 
@@ -91,15 +95,32 @@ pub fn parse() -> Result<Cli, i32> {
 }
 
 impl Cli {
+    pub fn filter_expression(&self) -> Option<String> {
+        if self.from_file.is_some() {
+            return None;
+        }
+
+        match self.filter.as_deref() {
+            Some(candidate) if !Path::new(candidate).exists() => Some(candidate.to_owned()),
+            _ => Some(".".to_owned()),
+        }
+    }
+
     pub fn input_paths(&self) -> Vec<PathBuf> {
         let mut paths = Vec::new();
-        if self.from_file.is_some() {
+        if self.from_file.is_some() || self.filter_is_existing_path() {
             if let Some(filter_position) = &self.filter {
                 paths.push(PathBuf::from(filter_position));
             }
         }
         paths.extend(self.files.iter().cloned());
         paths
+    }
+
+    fn filter_is_existing_path(&self) -> bool {
+        self.filter
+            .as_deref()
+            .is_some_and(|candidate| Path::new(candidate).exists())
     }
 
     pub fn use_json_color(&self) -> bool {
