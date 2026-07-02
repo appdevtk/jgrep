@@ -30,6 +30,17 @@ The scripts work without configuration. Optional environment variables:
 - `HERDR_PLUGIN_CONTEXT_JSON`: Herdr workspace, pane, and selection context.
 - `JGREP_LAST_FILTER_FILE`: optional path where `jgrep explore` records the current generated jq filter.
 
+Optional config file:
+
+```toml
+# $HERDR_PLUGIN_CONFIG_DIR/config.toml
+jgrep_bin = "jgrep"
+max_input_bytes = "52428800"
+completion_install = "print"
+```
+
+Environment variables override config values where both exist.
+
 Recommended Herdr keybinding:
 
 ```toml

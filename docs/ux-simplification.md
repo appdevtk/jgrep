@@ -44,8 +44,10 @@ Current layout:
 Current behavior:
 
 - Load JSON/NDJSON/YAML using the same parser path as CLI mode.
+- Refuse inputs above `--max-input-bytes` instead of accidentally reading unbounded data.
 - Infer a compact schema from the first N documents or the full file when small.
 - Autocomplete field paths from observed schema with `Tab`.
+- Scroll the field list and preview while keeping the filter cursor editable.
 - Support both jq and shortcut expressions:
   - `name`
   - `status=active`
@@ -79,4 +81,4 @@ Implemented first slice:
 4. Re-run the filter as input changes.
 5. Show output preview and final generated jq.
 
-Still deferred: collapsible tree navigation, large-file virtualization, editing source data, persistent config, themes, and advanced keymaps.
+Still deferred: true streaming parse/virtualization, collapsible tree navigation, editing source data, themes, and advanced keymaps.

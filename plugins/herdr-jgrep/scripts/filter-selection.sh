@@ -1,15 +1,14 @@
 #!/usr/bin/env sh
 set -eu
 
-state_dir=${HERDR_PLUGIN_STATE_DIR:-${TMPDIR:-/tmp}/jgrep-herdr}
-jgrep_bin=${JGREP_BIN:-jgrep}
-mkdir -p "$state_dir"
-find "$state_dir" -type f -name 'selection-*' -mtime +1 -delete 2>/dev/null || true
+plugin_root=${HERDR_PLUGIN_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
+. "$plugin_root/scripts/lib.sh"
 
-if ! command -v "$jgrep_bin" >/dev/null 2>&1; then
-  echo "jgrep Explorer: cannot find jgrep. Set JGREP_BIN or install jgrep first." >&2
-  exit 2
-fi
+state_dir=$(state_dir)
+jgrep_bin=$(jgrep_bin)
+max_input_bytes=$(max_input_bytes)
+cleanup_old_selections "$state_dir"
+ensure_jgrep "$jgrep_bin"
 
 tmp=$(mktemp "$state_dir/selection-XXXXXX")
 chmod 600 "$tmp"
@@ -64,5 +63,6 @@ if [ ! -s "$tmp" ]; then
   exit 2
 fi
 
+check_file_size "$tmp" "$max_input_bytes"
 export JGREP_LAST_FILTER_FILE=${JGREP_LAST_FILTER_FILE:-"$state_dir/last-filter.jq"}
-exec "$jgrep_bin" explore "$tmp"
+exec "$jgrep_bin" explore --max-input-bytes "$max_input_bytes" "$tmp"

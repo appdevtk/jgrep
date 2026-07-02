@@ -132,6 +132,38 @@ pub struct ExploreArgs {
         help = "Print a deterministic schema and preview snapshot instead of opening the TUI"
     )]
     pub print: bool,
+
+    #[arg(
+        long = "max-input-bytes",
+        default_value_t = 50 * 1024 * 1024,
+        value_name = "BYTES",
+        help = "Refuse to load more than this many input bytes"
+    )]
+    pub max_input_bytes: usize,
+
+    #[arg(
+        long = "max-schema-documents",
+        default_value_t = 500,
+        value_name = "N",
+        help = "Maximum documents sampled for schema inference"
+    )]
+    pub max_schema_documents: usize,
+
+    #[arg(
+        long = "max-preview-results",
+        default_value_t = 30,
+        value_name = "N",
+        help = "Maximum matching results shown in the live preview"
+    )]
+    pub max_preview_results: usize,
+
+    #[arg(
+        long = "max-schema-depth",
+        default_value_t = 8,
+        value_name = "N",
+        help = "Maximum nested depth inspected during schema inference"
+    )]
+    pub max_schema_depth: usize,
 }
 
 pub fn parse() -> Result<Cli, i32> {

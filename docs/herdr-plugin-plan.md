@@ -195,6 +195,14 @@ completion_install = "print"
 
 Defaults should work without a config file.
 
+Implemented fields:
+
+- `jgrep_bin`
+- `max_input_bytes`
+- `completion_install`
+
+The scripts still leave `default_placement` and `max_schema_documents` to future Herdr-native pane wiring.
+
 ## Implementation Slices
 
 ### Slice 1: Local Plugin Skeleton
@@ -253,6 +261,7 @@ Validation:
 
 - Completion installer does not overwrite existing files without a clear backup or print-only mode.
 - Actions fail with actionable terminal output.
+- Actions read `config.toml` from `HERDR_PLUGIN_CONFIG_DIR` where applicable.
 
 ## Architecture Notes
 

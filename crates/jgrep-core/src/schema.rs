@@ -6,43 +6,80 @@ use jaq_json::Val;
 pub struct FieldSummary {
     pub path: String,
     pub types: Vec<String>,
+    pub type_counts: Vec<(String, usize)>,
     pub count: usize,
+    pub documents: usize,
+    pub optional: bool,
+    pub examples: Vec<String>,
 }
 
 #[derive(Default)]
 struct FieldStats {
-    types: BTreeSet<&'static str>,
+    type_counts: BTreeMap<&'static str, usize>,
+    documents: BTreeSet<usize>,
+    examples: BTreeSet<String>,
     count: usize,
 }
 
-pub fn infer_schema(values: &[Val], max_documents: usize) -> Vec<FieldSummary> {
+pub fn infer_schema(values: &[Val], max_documents: usize, max_depth: usize) -> Vec<FieldSummary> {
     let mut fields = BTreeMap::<String, FieldStats>::new();
-    for value in values.iter().take(max_documents) {
-        visit_value(value, "", &mut fields);
+    let sampled = values.len().min(max_documents);
+    for (document, value) in values.iter().take(max_documents).enumerate() {
+        visit_value(value, "", document, 0, max_depth, &mut fields);
     }
 
     fields
         .into_iter()
         .map(|(path, stats)| FieldSummary {
             path,
-            types: stats.types.into_iter().map(str::to_owned).collect(),
+            types: stats
+                .type_counts
+                .keys()
+                .copied()
+                .map(str::to_owned)
+                .collect(),
+            type_counts: stats
+                .type_counts
+                .into_iter()
+                .map(|(kind, count)| (kind.to_owned(), count))
+                .collect(),
             count: stats.count,
+            documents: stats.documents.len(),
+            optional: stats.documents.len() < sampled,
+            examples: stats.examples.into_iter().take(3).collect(),
         })
         .collect()
 }
 
-fn visit_value(value: &Val, path: &str, fields: &mut BTreeMap<String, FieldStats>) {
+fn visit_value(
+    value: &Val,
+    path: &str,
+    document: usize,
+    depth: usize,
+    max_depth: usize,
+    fields: &mut BTreeMap<String, FieldStats>,
+) {
     if !path.is_empty() {
         let stats = fields.entry(path.to_owned()).or_default();
-        stats.types.insert(kind(value));
+        *stats.type_counts.entry(kind(value)).or_default() += 1;
+        stats.documents.insert(document);
         stats.count += 1;
+        if stats.examples.len() < 3 && !matches!(value, Val::Arr(_) | Val::Obj(_)) {
+            if let Ok(example) = crate::output::format_value(value, false) {
+                stats.examples.insert(example);
+            }
+        }
+    }
+
+    if depth >= max_depth {
+        return;
     }
 
     match value {
         Val::Obj(object) => {
             for (key, value) in object.iter() {
                 let child_path = join_path(path, &key_segment(key));
-                visit_value(value, &child_path, fields);
+                visit_value(value, &child_path, document, depth + 1, max_depth, fields);
             }
         }
         Val::Arr(values) => {
@@ -52,7 +89,7 @@ fn visit_value(value: &Val, path: &str, fields: &mut BTreeMap<String, FieldStats
                 format!("{path}[]")
             };
             for value in values.iter() {
-                visit_value(value, &child_path, fields);
+                visit_value(value, &child_path, document, depth + 1, max_depth, fields);
             }
         }
         _ => {}
@@ -106,16 +143,38 @@ mod tests {
 "#,
         );
 
-        let fields = infer_schema(&values, 500);
+        let fields = infer_schema(&values, 500, 8);
 
-        assert!(fields
-            .iter()
-            .any(|f| f.path == "name" && f.types == ["string"] && f.count == 2));
+        assert!(fields.iter().any(|f| f.path == "name"
+            && f.types == ["string"]
+            && f.count == 2
+            && f.documents == 2
+            && !f.optional
+            && f.examples == ["Alice", "Bob"]));
         assert!(fields
             .iter()
             .any(|f| f.path == "profile.age" && f.types == ["number"]));
         assert!(fields
             .iter()
             .any(|f| f.path == "tags[]" && f.types == ["string"]));
+    }
+
+    #[test]
+    fn marks_optional_fields_and_honors_max_depth() {
+        let values = parse_values(
+            br#"{"profile":{"age":30},"enabled":true}
+{"enabled":false}
+"#,
+        );
+
+        let shallow = infer_schema(&values, 500, 1);
+        assert!(shallow.iter().any(|f| f.path == "profile"));
+        assert!(!shallow.iter().any(|f| f.path == "profile.age"));
+
+        let fields = infer_schema(&values, 500, 8);
+        let age = fields.iter().find(|f| f.path == "profile.age").unwrap();
+        assert!(age.optional);
+        assert_eq!(age.documents, 1);
+        assert_eq!(age.type_counts, [("number".to_owned(), 1)]);
     }
 }

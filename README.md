@@ -107,6 +107,7 @@ cat config.yaml | jgrep
 # Explore before committing to a jq expression
 jgrep explore config.yaml
 jgrep explore --filter status=active logs.ndjson
+jgrep explore --max-input-bytes 10485760 --max-preview-results 20 logs.ndjson
 
 # Find files containing errors
 jgrep -l 'select(.level == "ERROR")' logs/*.json

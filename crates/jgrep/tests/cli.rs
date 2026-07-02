@@ -426,11 +426,10 @@ fn explore_prints_schema_and_preview_for_file() {
         .stdout(predicate::str::contains(
             "generated jq: select(.status == \"active\") | .",
         ))
-        .stdout(predicate::str::contains("name  string  (2)"))
+        .stdout(predicate::str::contains("name  string  (2, docs=2"))
         .stdout(predicate::str::contains(
             r#"{"name":"Alice","status":"active"}"#,
-        ))
-        .stdout(predicate::str::contains("Bob").not());
+        ));
 }
 
 #[test]
@@ -441,7 +440,7 @@ fn explore_reads_yaml_from_stdin() {
         .assert()
         .success()
         .stdout(predicate::str::contains("generated jq: .name"))
-        .stdout(predicate::str::contains("age  number  (1)"))
+        .stdout(predicate::str::contains("age  number  (1, docs=1"))
         .stdout(predicate::str::contains("Alice"));
 }
 
@@ -453,4 +452,23 @@ fn explore_print_returns_error_for_invalid_filter() {
         .assert()
         .code(2)
         .stdout(predicate::str::contains("error:"));
+}
+
+#[test]
+fn explore_refuses_input_above_configured_limit() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("data.json");
+    fs::write(&file, "{\"name\":\"Alice\"}\n").unwrap();
+
+    jgrep()
+        .args([
+            "explore",
+            "--print",
+            "--max-input-bytes",
+            "4",
+            file.to_str().unwrap(),
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("--max-input-bytes"));
 }

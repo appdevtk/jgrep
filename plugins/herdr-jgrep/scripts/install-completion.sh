@@ -1,13 +1,12 @@
 #!/usr/bin/env sh
 set -eu
 
-jgrep_bin=${JGREP_BIN:-jgrep}
-mode=${JGREP_COMPLETION_INSTALL:-print}
+plugin_root=${HERDR_PLUGIN_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
+. "$plugin_root/scripts/lib.sh"
 
-if ! command -v "$jgrep_bin" >/dev/null 2>&1; then
-  echo "jgrep Explorer: cannot find jgrep. Set JGREP_BIN or install jgrep first." >&2
-  exit 2
-fi
+jgrep_bin=$(jgrep_bin)
+mode=${JGREP_COMPLETION_INSTALL:-$(config_value completion_install print)}
+ensure_jgrep "$jgrep_bin"
 
 print_commands() {
   cat <<EOF
