@@ -1,54 +1,52 @@
-# jgrep & ygrep
+# jgrep
 
-`grep` for structured data — filter and search JSON and YAML files using [jq](https://jqlang.github.io/jq/) expressions.
+`grep` for structured data — filter and search JSON, NDJSON, and YAML files using [jq](https://jqlang.github.io/jq/) expressions.
 
 | Tool | Input | Recursive discovery |
 |------|-------|---------------------|
-| `jgrep` | JSON, NDJSON | `*.json` |
-| `ygrep` | YAML | `*.yaml`, `*.yml` |
+| `jgrep` | JSON, NDJSON, YAML | `*.json`, `*.yaml`, `*.yml` |
 
 ```bash
 # Extract a field from JSON
 jgrep '.name' users.json
 
 # Filter YAML manifests
-ygrep '.spec.template.spec.containers[].image' deploy/
+jgrep '.spec.template.spec.containers[].image' deploy/
 
 # Search recursively, count matches
 jgrep -rc 'select(.status == "active")' ./data/
 
 # Pipe from stdin
 curl -s https://api.example.com/users | jgrep 'select(.role == "admin")'
-kubectl get deploy checkout -o yaml | ygrep '.spec.replicas'
+kubectl get deploy checkout -o yaml | jgrep '.spec.replicas'
 ```
 
 ## Installation
 
 Download native binaries from the [Releases](https://github.com/subnix-work/jgrep/releases) page — no JVM required.
 
-Linux x64: `jgrep` and `ygrep` binaries; macOS x64 and arm64: tarballs.
+Linux x64 and macOS release assets provide the `jgrep` binary.
 
 **Or build from source:**
 
 ```bash
 git clone https://github.com/subnix-work/jgrep.git
+cd jgrep
 
-# JVM build (requires Java 25+)
+# Rust build
+cargo build --release -p jgrep
+./target/release/jgrep '.name' file.json
+./target/release/jgrep '.metadata.name' manifest.yaml
+
+# Legacy JVM reference build (requires Java 25+)
 cd jgrep/jgrep && ./mvnw package
 java -jar target/quarkus-app/quarkus-run.jar '.name' file.json
 
 cd ../ygrep && ./mvnw package
 java -jar target/quarkus-app/quarkus-run.jar '.metadata.name' manifest.yaml
-
-# Native Linux binary via Docker (no GraalVM needed locally)
-cd jgrep/jgrep && ./mvnw package -Pnative -Dquarkus.native.container-build=true
-./target/jgrep-1.3.0-runner '.name' file.json
-
-cd ../ygrep && ./mvnw package -Pnative -Dquarkus.native.container-build=true
-./target/ygrep-1.3.0-runner '.metadata.name' manifest.yaml
 ```
 
-Docker native builds produce Linux executables. Use the GitHub release assets for macOS binaries, or build natively on macOS with GraalVM installed.
+The Java `jgrep`/`ygrep` modules remain in the repository as reference implementations during the Rust migration.
 
 ## Usage
 
@@ -59,37 +57,10 @@ Usage: jgrep [-rclsnhV] [-f=FILE] [--pretty] [--color-level] [--color-level-fiel
 
   FILTER   jq filter expression (e.g. '.name', 'select(.age > 18)', '.items[]').
            Required unless -f is used.
-  FILE     JSON files to search. Reads from stdin if omitted.
+  FILE     JSON, NDJSON, or YAML files to search. Reads from stdin if omitted.
 
 Options:
-  -r, --recursive            Recurse into directories (searches *.json files)
-  -l, --files-with-matches   Only print filenames that contain matches
-  -c, --count                Print match count per file
-  -s, --slurp                Collect all results into a single JSON array
-  -n, --null-input           Use null as input (no file needed; evaluate filter directly)
-  -f, --from-file=FILE       Read filter expression from a file
-      --pretty               Pretty-print JSON output
-      --color-level          Color each output line by log level
-      --color-level-field    Field used by --color-level (e.g. app.level)
-      --no-color             Disable colored output (also respects $NO_COLOR)
-  -h, --help                 Show this help message
-  -V, --version              Print version
-
-Subcommands:
-  completion SHELL           Generate shell completion script
-```
-
-### ygrep
-
-```
-Usage: ygrep [-rclsnhV] [-f=FILE] [--pretty] [--color-level] [--color-level-field FIELD] [--no-color] [FILTER] [FILE...]
-
-  FILTER   jq filter expression (e.g. '.metadata.name', 'select(.spec.replicas > 1)').
-           Required unless -f is used.
-  FILE     YAML files to search. Reads from stdin if omitted.
-
-Options:
-  -r, --recursive            Recurse into directories (searches *.yaml and *.yml files)
+  -r, --recursive            Recurse into directories (searches *.json, *.yaml, *.yml files)
   -l, --files-with-matches   Only print filenames that contain matches
   -c, --count                Print match count per file
   -s, --slurp                Collect all results into a single JSON array
@@ -137,13 +108,13 @@ jgrep -n 'now | strftime("%Y-%m-%d")'
 jgrep -f filter.jq events.ndjson
 
 # Query a Kubernetes manifest
-ygrep '.spec.template.spec.containers[].image' deployment.yaml
+jgrep '.spec.template.spec.containers[].image' deployment.yaml
 
 # Find all Deployments with more than 2 replicas
-ygrep -r 'select(.kind == "Deployment" and .spec.replicas > 2)' k8s/
+jgrep -r 'select(.kind == "Deployment" and .spec.replicas > 2)' k8s/
 
 # Pipe kubectl output
-kubectl get deploy checkout -o yaml | ygrep '.spec.template.spec.containers[].image'
+kubectl get deploy checkout -o yaml | jgrep '.spec.template.spec.containers[].image'
 ```
 
 ### Shell completion
@@ -151,19 +122,15 @@ kubectl get deploy checkout -o yaml | ygrep '.spec.template.spec.containers[].im
 ```bash
 # Bash
 jgrep completion bash > ~/.local/share/bash-completion/completions/jgrep
-ygrep completion bash > ~/.local/share/bash-completion/completions/ygrep
 
 # Zsh
 jgrep completion zsh > ~/.zsh/completions/_jgrep
-ygrep completion zsh > ~/.zsh/completions/_ygrep
 
 # Fish
 jgrep completion fish > ~/.config/fish/completions/jgrep.fish
-ygrep completion fish > ~/.config/fish/completions/ygrep.fish
 
 # PowerShell
 jgrep completion powershell >> $PROFILE
-ygrep completion powershell >> $PROFILE
 ```
 
 ### Human-readable Kubernetes / ECS logs
@@ -191,7 +158,7 @@ cat app.ndjson | jgrep --color-level --color-level-field app.level \
 
 ## Filter syntax
 
-Both `jgrep` and `ygrep` use full [jq 1.6](https://jqlang.github.io/jq/manual/) syntax. `jgrep` supports NDJSON natively — multiple JSON documents per file are each filtered independently.
+`jgrep` uses [`jaq`](https://github.com/01mf02/jaq) for jq-compatible filter execution. JSON/NDJSON and YAML documents are each filtered independently.
 
 **Exit codes** (same as `grep`):
 - `0` — at least one match found
@@ -222,9 +189,10 @@ Both `jgrep` and `ygrep` use full [jq 1.6](https://jqlang.github.io/jq/manual/) 
 
 ## Tech stack
 
-- [Quarkus](https://quarkus.io/) + [Picocli](https://picocli.info/) — CLI framework
-- [jackson-jq](https://github.com/eiiches/jackson-jq) — jq implementation in Java
-- GraalVM Native Image — single binary, no JVM needed, ~8ms startup
+- Rust + [clap](https://docs.rs/clap/) — CLI framework
+- [jaq](https://github.com/01mf02/jaq) — jq-compatible filter engine
+- [yaml_serde](https://crates.io/crates/yaml_serde) — YAML parsing
+- Legacy reference implementation: Quarkus + Picocli + jackson-jq
 
 ## License
 

@@ -1,0 +1,18 @@
+[package]
+name = "jgrep-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+clap.workspace = true
+clap_complete.workspace = true
+jaq-core.workspace = true
+jaq-json.workspace = true
+jaq-std.workspace = true
+serde.workspace = true
+walkdir.workspace = true
+yaml_serde.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
