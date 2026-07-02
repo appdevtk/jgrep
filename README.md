@@ -53,7 +53,7 @@ The Java `jgrep`/`ygrep` modules remain in the repository as reference implement
 ### jgrep
 
 ```
-Usage: jgrep [-rclsnhV] [-f=FILE] [--pretty] [-C|--color-level] [--color-level-field FIELD] [--no-color] [FILTER] [FILE...]
+Usage: jgrep [-rclsnhV] [-f=FILE] [-p FIELD] [-w TEST] [--pretty] [-C|--color-level] [--color-level-field FIELD] [--no-color] [FILTER] [FILE...]
 
   FILTER   jq filter expression (e.g. '.name', 'select(.age > 18)', '.items[]').
            Defaults to '.' when omitted or when the first positional argument is an existing path.
@@ -66,6 +66,8 @@ Options:
   -s, --slurp                Collect all results into a single JSON array
   -n, --null-input           Use null as input (no file needed; evaluate filter directly)
   -f, --from-file=FILE       Read filter expression from a file
+  -p, --path=FIELD           Extract a dotted field path without jq syntax
+  -w, --where=TEST           Filter with a simple condition (e.g. status=active, age>=18)
       --pretty               Pretty-print JSON output
   -C, --color-level          Color each output line by log level
       --color-level-field    Field used by --color-level (e.g. app.level)
@@ -86,6 +88,13 @@ jgrep 'select(.age > 18)' users.ndjson
 # Extract nested field
 jgrep '.address.city' customers.json
 
+# Extract a field without jq syntax
+jgrep -p address.city customers.json
+
+# Filter without jq syntax
+jgrep -w status=active -p name users.ndjson
+jgrep -w 'age>=18' -p name users.ndjson
+
 # Convert JSON/YAML to JSON with the default identity filter
 jgrep config.yaml
 cat config.yaml | jgrep
@@ -95,6 +104,7 @@ jgrep -l 'select(.level == "ERROR")' logs/*.json
 
 # Color structured logs by their level field
 jgrep -C logs.ndjson
+jgrep -C -w log.level=ERROR logs.ndjson
 
 # Count active items per file
 jgrep -rc 'select(.active == true)' ./data/

@@ -51,6 +51,23 @@ pub struct Cli {
     #[arg(long = "pretty", help = "Pretty-print JSON output")]
     pub pretty: bool,
 
+    #[arg(
+        short = 'p',
+        long = "path",
+        value_name = "FIELD",
+        help = "Extract a dotted field path without jq syntax, e.g. -p app.level"
+    )]
+    pub path_filter: Option<String>,
+
+    #[arg(
+        short = 'w',
+        long = "where",
+        value_name = "TEST",
+        action = ArgAction::Append,
+        help = "Filter with a simple condition, e.g. -w status=active or -w age>=18"
+    )]
+    pub where_filters: Vec<String>,
+
     #[arg(long = "no-color", help = "Disable colored output")]
     pub no_color: bool,
 

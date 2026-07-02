@@ -333,3 +333,72 @@ fn color_level_short_flag_works_with_default_filter() {
         .success()
         .stdout(predicate::str::contains(r#""message":"boom""#));
 }
+
+#[test]
+fn path_shortcut_extracts_fields_without_jq_syntax() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("data.json");
+    fs::write(&file, r#"{"user":{"name":"Alice"},"user.name":"Direct"}"#).unwrap();
+
+    jgrep()
+        .args(["-p", "user.name", file.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout("Direct\n");
+
+    let nested = dir.path().join("nested.json");
+    fs::write(&nested, r#"{"user":{"name":"Alice"}}"#).unwrap();
+    jgrep()
+        .args(["--path", "user.name", nested.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout("Alice\n");
+}
+
+#[test]
+fn where_shortcut_filters_without_jq_syntax() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("users.json");
+    fs::write(
+        &file,
+        "{\"name\":\"Alice\",\"age\":30,\"active\":true}\n{\"name\":\"Bob\",\"age\":15,\"active\":false}\n",
+    )
+    .unwrap();
+
+    jgrep()
+        .args([
+            "-w",
+            "active=true",
+            "-w",
+            "age>=18",
+            "-p",
+            "name",
+            file.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout("Alice\n");
+}
+
+#[test]
+fn where_shortcut_supports_dotted_log_keys() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("logs.json");
+    fs::write(
+        &file,
+        "{\"log.level\":\"ERROR\",\"message\":\"boom\"}\n{\"log.level\":\"INFO\",\"message\":\"ok\"}\n",
+    )
+    .unwrap();
+
+    jgrep()
+        .args([
+            "-w",
+            "log.level=ERROR",
+            "-p",
+            "message",
+            file.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout("boom\n");
+}

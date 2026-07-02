@@ -5,6 +5,7 @@ mod discovery;
 mod input;
 mod matcher;
 mod output;
+mod shortcuts;
 
 use std::io::{self, Read, Write};
 
@@ -116,19 +117,27 @@ fn run(cli: Cli) -> i32 {
 }
 
 fn resolve_filter(cli: &Cli, err: &mut dyn Write) -> Result<String, ()> {
-    if let Some(path) = &cli.from_file {
-        return std::fs::read_to_string(path)
+    let base_filter = if let Some(path_filter) = &cli.path_filter {
+        shortcuts::path_filter(path_filter).map_err(|e| {
+            let _ = writeln!(err, "{NAME}: invalid path shortcut: {e}");
+        })?
+    } else if let Some(path) = &cli.from_file {
+        std::fs::read_to_string(path)
             .map(|s| s.trim().to_owned())
             .map_err(|e| {
                 let _ = writeln!(err, "{NAME}: cannot read filter file: {e}");
-            });
-    }
+            })?
+    } else {
+        cli.filter_expression().ok_or_else(|| {
+            let _ = writeln!(
+                err,
+                "{NAME}: filter expression required (or use -f to read from file)"
+            );
+        })?
+    };
 
-    cli.filter_expression().ok_or_else(|| {
-        let _ = writeln!(
-            err,
-            "{NAME}: filter expression required (or use -f to read from file)"
-        );
+    shortcuts::apply_where_filters(base_filter, &cli.where_filters).map_err(|e| {
+        let _ = writeln!(err, "{NAME}: invalid where shortcut: {e}");
     })
 }
 
