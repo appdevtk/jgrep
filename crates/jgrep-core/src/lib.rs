@@ -2,9 +2,11 @@ mod cli;
 mod color;
 mod completion;
 mod discovery;
+mod explore;
 mod input;
 mod matcher;
 mod output;
+mod schema;
 mod shortcuts;
 
 use std::io::{self, Read, Write};
@@ -25,6 +27,7 @@ pub fn main_entry() -> i32 {
 
     match cli.command {
         Some(Command::Completion { shell }) => completion::print_completion(&shell),
+        Some(Command::Explore(args)) => explore::run(args),
         None => run(cli),
     }
 }

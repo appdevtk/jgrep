@@ -402,3 +402,55 @@ fn where_shortcut_supports_dotted_log_keys() {
         .success()
         .stdout("boom\n");
 }
+
+#[test]
+fn explore_prints_schema_and_preview_for_file() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("users.json");
+    fs::write(
+        &file,
+        "{\"name\":\"Alice\",\"status\":\"active\"}\n{\"name\":\"Bob\",\"status\":\"blocked\"}\n",
+    )
+    .unwrap();
+
+    jgrep()
+        .args([
+            "explore",
+            "--print",
+            "--filter",
+            "status=active",
+            file.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "generated jq: select(.status == \"active\") | .",
+        ))
+        .stdout(predicate::str::contains("name  string  (2)"))
+        .stdout(predicate::str::contains(
+            r#"{"name":"Alice","status":"active"}"#,
+        ))
+        .stdout(predicate::str::contains("Bob").not());
+}
+
+#[test]
+fn explore_reads_yaml_from_stdin() {
+    jgrep()
+        .args(["explore", "--print", "--filter", "name"])
+        .write_stdin("name: Alice\nage: 30\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("generated jq: .name"))
+        .stdout(predicate::str::contains("age  number  (1)"))
+        .stdout(predicate::str::contains("Alice"));
+}
+
+#[test]
+fn explore_print_returns_error_for_invalid_filter() {
+    jgrep()
+        .args(["explore", "--print", "--filter", ".["])
+        .write_stdin("{\"name\":\"Alice\"}\n")
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains("error:"));
+}

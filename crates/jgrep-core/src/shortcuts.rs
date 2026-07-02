@@ -6,6 +6,23 @@ pub fn path_filter(path: &str) -> Result<String, String> {
     Ok(path_to_jq(path))
 }
 
+pub fn expression_to_jq(expression: &str) -> Result<String, String> {
+    let expression = expression.trim();
+    if expression.is_empty() {
+        return Ok(".".to_owned());
+    }
+
+    if expression.starts_with('.') || expression.starts_with("select(") {
+        return Ok(expression.to_owned());
+    }
+
+    if contains_condition_operator(expression) {
+        apply_where_filters(".".to_owned(), &[expression.to_owned()])
+    } else {
+        path_filter(expression)
+    }
+}
+
 pub fn apply_where_filters(base_filter: String, filters: &[String]) -> Result<String, String> {
     if filters.is_empty() {
         return Ok(base_filter);
@@ -20,6 +37,12 @@ pub fn apply_where_filters(base_filter: String, filters: &[String]) -> Result<St
         "select({}) | {base_filter}",
         conditions.join(" and ")
     ))
+}
+
+fn contains_condition_operator(input: &str) -> bool {
+    ["!=", ">=", "<=", "=", ">", "<"]
+        .iter()
+        .any(|op| input.split_once(op).is_some())
 }
 
 fn where_condition(input: &str) -> Result<String, String> {
@@ -132,6 +155,17 @@ mod tests {
         assert_eq!(
             apply_where_filters(".".to_owned(), &[String::from("log.level=ERROR")]).unwrap(),
             "select((if type == \"object\" and has(\"log.level\") then .[\"log.level\"] else .log.level end) == \"ERROR\") | ."
+        );
+    }
+
+    #[test]
+    fn expands_explore_expressions() {
+        assert_eq!(expression_to_jq("").unwrap(), ".");
+        assert_eq!(expression_to_jq("name").unwrap(), ".name");
+        assert_eq!(expression_to_jq(".items[]").unwrap(), ".items[]");
+        assert_eq!(
+            expression_to_jq("status=active").unwrap(),
+            "select(.status == \"active\") | ."
         );
     }
 }

@@ -23,9 +23,9 @@ Herdr plugins are executable workflow packages with a `herdr-plugin.toml` manife
 - Do not implement a web UI.
 - Do not store source data in Herdr plugin state.
 
-## Proposed Package
+## Implemented Package
 
-Create a plugin directory:
+The first plugin directory is in place:
 
 ```text
 plugins/herdr-jgrep/
@@ -144,14 +144,14 @@ and install to common shell completion directories where safe. If the target she
 
 ## `jgrep explore` Contract
 
-The plugin depends on a future `jgrep explore` subcommand. Keep that subcommand useful without Herdr:
+The plugin depends on the standalone `jgrep explore` subcommand. Keep that subcommand useful without Herdr:
 
 ```bash
 jgrep explore file.json
 cat logs.ndjson | jgrep explore
 ```
 
-Minimum TUI behavior:
+Current TUI behavior:
 
 - Parse JSON, NDJSON, and YAML through the same code path as normal `jgrep`.
 - Infer a compact schema from the first N documents or the whole file when small.
@@ -162,7 +162,7 @@ Minimum TUI behavior:
   - `age>=18`
   - `.items[] | select(.active == true)`
 - Show the generated jq filter for shortcut expressions.
-- Let the user print the result or copy/export the final jq expression.
+- Let the user print the filtered result or export the final jq expression.
 
 ## Plugin Runtime Rules
 
@@ -199,9 +199,9 @@ Defaults should work without a config file.
 
 ### Slice 1: Local Plugin Skeleton
 
-- Add `plugins/herdr-jgrep/herdr-plugin.toml`.
-- Add `open-explorer.sh` that validates `jgrep` exists and opens `jgrep explore`.
-- Add plugin README with local link command:
+- Added `plugins/herdr-jgrep/herdr-plugin.toml`.
+- Added `open-explorer.sh` that validates `jgrep` exists and opens `jgrep explore`.
+- Added plugin README with local link command:
 
 ```bash
 herdr plugin link plugins/herdr-jgrep
@@ -216,10 +216,10 @@ Validation:
 
 ### Slice 2: Implement `jgrep explore`
 
-- Add `explore` subcommand in Rust.
-- Use `ratatui` and `crossterm`.
-- Share parsing and filter shortcut code with non-interactive mode.
-- Add snapshot-like tests for schema inference and shortcut-to-jq generation.
+- Added `explore` subcommand in Rust.
+- Used `ratatui` and `crossterm`.
+- Shared parsing and filter shortcut code with non-interactive mode.
+- Added snapshot-like tests for schema inference and shortcut-to-jq generation.
 
 Validation:
 
@@ -232,7 +232,7 @@ Validation:
 - Parse `HERDR_PLUGIN_CONTEXT_JSON`.
 - Support selected text to temp-file workflow.
 - Support path/token detection from focused pane context when present.
-- Open a Herdr pane via `HERDR_BIN_PATH` where useful instead of only relying on manifest pane entrypoints.
+- Keep pane opening delegated to Herdr manifest entrypoints until the exact Herdr pane invocation contract is available.
 
 Validation:
 
@@ -242,12 +242,12 @@ Validation:
 
 ### Slice 4: Completion And Convenience Actions
 
-- Add shell-aware completion installer.
-- Add common actions:
-  - Explore current file.
+- Added shell-aware completion installer.
+- Added common actions:
+  - Explore current file or nearby JSON/YAML file.
   - Explore selected text.
-  - Open logs with color-level filter.
-  - Print generated jq filter from last explorer session.
+  - Open logs with a `log.level=ERROR` filter.
+  - Print generated jq filter from the last plugin-launched explorer session.
 
 Validation:
 
@@ -270,7 +270,7 @@ Validation:
 
 ## Recommendation
 
-Do it, but as an optional plugin plus a standalone `jgrep explore` subcommand.
+Do it as an optional plugin plus a standalone `jgrep explore` subcommand.
 
 That gives Herdr users the terminal-native experience without coupling the core tool to one terminal workspace manager. The first useful milestone is:
 

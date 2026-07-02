@@ -7,9 +7,11 @@ license.workspace = true
 [dependencies]
 clap.workspace = true
 clap_complete.workspace = true
+crossterm = "0.28.1"
 jaq-core.workspace = true
 jaq-json.workspace = true
 jaq-std.workspace = true
+ratatui = "0.29.0"
 serde.workspace = true
 walkdir.workspace = true
 yaml_serde.workspace = true

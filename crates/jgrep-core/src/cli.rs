@@ -7,7 +7,7 @@ use clap::{ArgAction, Parser, Subcommand};
     name = "jgrep",
     version,
     about = "grep for JSON, NDJSON, and YAML using jq filters",
-    override_usage = "jgrep [OPTIONS] FILTER [FILE...]\njgrep completion SHELL"
+    override_usage = "jgrep [OPTIONS] FILTER [FILE...]\njgrep explore [OPTIONS] [FILE]\njgrep completion SHELL"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -97,6 +97,9 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    #[command(about = "Explore JSON, NDJSON, or YAML with schema hints and a live preview")]
+    Explore(ExploreArgs),
+
     #[command(about = "Generate shell completion script")]
     Completion {
         #[arg(
@@ -105,6 +108,30 @@ pub enum Command {
         )]
         shell: String,
     },
+}
+
+#[derive(Debug, Parser)]
+pub struct ExploreArgs {
+    #[arg(
+        index = 1,
+        value_name = "FILE",
+        help = "File to explore; reads stdin if omitted"
+    )]
+    pub input: Option<PathBuf>,
+
+    #[arg(
+        short = 'f',
+        long = "filter",
+        value_name = "EXPR",
+        help = "Initial jq filter or shortcut expression"
+    )]
+    pub filter: Option<String>,
+
+    #[arg(
+        long = "print",
+        help = "Print a deterministic schema and preview snapshot instead of opening the TUI"
+    )]
+    pub print: bool,
 }
 
 pub fn parse() -> Result<Cli, i32> {

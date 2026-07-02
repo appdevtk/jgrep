@@ -19,6 +19,10 @@ jgrep -rc 'select(.status == "active")' ./data/
 # Pipe from stdin
 curl -s https://api.example.com/users | jgrep 'select(.role == "admin")'
 kubectl get deploy checkout -o yaml | jgrep '.spec.replicas'
+
+# Explore fields and preview filters interactively
+jgrep explore users.json
+kubectl get pods -o yaml | jgrep explore
 ```
 
 ## Installation
@@ -76,6 +80,7 @@ Options:
   -V, --version              Print version
 
 Subcommands:
+  explore [FILE]             Explore JSON, NDJSON, or YAML with schema hints and a live preview
   completion SHELL           Generate shell completion script
 ```
 
@@ -98,6 +103,10 @@ jgrep -w 'age>=18' -p name users.ndjson
 # Convert JSON/YAML to JSON with the default identity filter
 jgrep config.yaml
 cat config.yaml | jgrep
+
+# Explore before committing to a jq expression
+jgrep explore config.yaml
+jgrep explore --filter status=active logs.ndjson
 
 # Find files containing errors
 jgrep -l 'select(.level == "ERROR")' logs/*.json

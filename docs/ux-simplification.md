@@ -25,36 +25,38 @@ jgrep -w status=active -p name users.ndjson
 jgrep -C -w log.level=ERROR logs.ndjson
 ```
 
-## Recommended next UX layer: `jgrep explore`
+## Implemented next UX layer: `jgrep explore`
 
-Add an interactive TUI as a separate subcommand instead of changing non-interactive CLI semantics:
+An interactive TUI is available as a separate subcommand instead of changing non-interactive CLI semantics:
 
 ```bash
 jgrep explore file.json
 kubectl get pods -o yaml | jgrep explore
 ```
 
-Suggested layout:
+Current layout:
 
-- Left pane: parsed tree with collapsible objects/arrays.
+- Left pane: schema-derived field list.
 - Top input: editable filter field.
 - Right pane: live result preview.
 - Bottom hint bar: schema-derived field suggestions, shortcuts, and current output count.
 
-Suggested behavior:
+Current behavior:
 
 - Load JSON/NDJSON/YAML using the same parser path as CLI mode.
 - Infer a compact schema from the first N documents or the full file when small.
-- Autocomplete field paths from observed schema.
+- Autocomplete field paths from observed schema with `Tab`.
 - Support both jq and shortcut expressions:
   - `name`
   - `status=active`
   - `age>=18`
   - full jq when prefixed with `.` or `select(...)`
-- Export the final filter to stdout or copy it into shell history-friendly text:
+- Export the final filter or preview result to stdout:
   - `Enter`: print result.
   - `Ctrl-Y`: print generated jq filter.
-  - `Ctrl-S`: save filter to file.
+  - `Ctrl-S`: save generated jq filter to a file.
+
+Non-interactive output, including tests and redirected stdout, prints a deterministic schema and preview snapshot with `--print`.
 
 ## External UX references
 
@@ -65,16 +67,16 @@ Suggested behavior:
 - [`jiq`](https://lib.rs/crates/jiq) emphasizes real-time output and autocomplete for jq functions and fields.
 - The official [jq playground](https://play.jqlang.org/) uses a query pane, input pane, options, and output preview; that is a good conceptual model for terminal mode.
 
-## Implementation recommendation
+## Implementation notes
 
-Use a Rust TUI stack such as `ratatui` plus `crossterm`.
+The first TUI slice uses `ratatui` plus `crossterm`.
 
-Keep the first TUI slice narrow:
+Implemented first slice:
 
 1. Parse one file or stdin into memory.
 2. Show schema-derived field list.
 3. Let the user type a filter or shortcut.
-4. Re-run the filter with debounce.
+4. Re-run the filter as input changes.
 5. Show output preview and final generated jq.
 
-Defer large-file virtualization, editing source data, persistent config, themes, and advanced keymaps until the basic explore loop is useful.
+Still deferred: collapsible tree navigation, large-file virtualization, editing source data, persistent config, themes, and advanced keymaps.
