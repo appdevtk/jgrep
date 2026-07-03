@@ -53,6 +53,16 @@
       text-underline-offset: 0.18em;
     }
 
+    a:hover {
+      text-decoration-thickness: 0.12em;
+    }
+
+    a:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+      outline-offset: 3px;
+      border-radius: 4px;
+    }
+
     .shell {
       width: min(1120px, calc(100% - 32px));
       margin: 0 auto;
@@ -134,6 +144,12 @@
       color: var(--accent-strong);
     }
 
+    .button:hover {
+      background: var(--accent-strong);
+      border-color: var(--accent-strong);
+      color: #fff;
+    }
+
     .terminal {
       overflow: hidden;
       border: 1px solid var(--line);
@@ -176,6 +192,16 @@
 
     code {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    p code,
+    footer code {
+      padding: 0.1em 0.3em;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: color-mix(in srgb, var(--panel) 70%, var(--bg));
+      color: var(--fg);
+      font-size: 0.93em;
     }
 
     section {
@@ -318,23 +344,23 @@ $ jgrep -r 'select(.level == "ERROR")' ./logs
         <div class="grid">
           <article class="card">
             <h3>One command</h3>
-            <p>Use `jgrep` for JSON, newline-delimited JSON, YAML, and YAML multi-document input.</p>
+            <p>Use <code>jgrep</code> for JSON, newline-delimited JSON, YAML, and YAML multi-document input.</p>
           </article>
           <article class="card">
             <h3>jq filters</h3>
-            <p>Run field projections, `select(...)`, array iteration, interpolation, and other jq-style expressions through `jaq`.</p>
+            <p>Run field projections, <code>select(...)</code>, array iteration, interpolation, and other jq-style expressions through <code>jaq</code>.</p>
           </article>
           <article class="card">
             <h3>Recursive search</h3>
-            <p>Search directories for `.json`, `.yaml`, and `.yml` files with deterministic output and grep-style exit codes.</p>
+            <p>Search directories for <code>.json</code>, <code>.yaml</code>, and <code>.yml</code> files with deterministic output and grep-style exit codes.</p>
           </article>
           <article class="card">
             <h3>Shortcuts</h3>
-            <p>Use `-p address.city` and `-w status=active` when a full jq expression is more than you need.</p>
+            <p>Use <code>-p address.city</code> and <code>-w status=active</code> when a full jq expression is more than you need.</p>
           </article>
           <article class="card">
             <h3>Interactive explorer</h3>
-            <p>`jgrep explore` shows inferred fields, live preview output, generated jq, completion, history, and save/export shortcuts.</p>
+            <p><code>jgrep explore</code> shows inferred fields, live preview output, generated jq, completion, history, and save/export shortcuts.</p>
           </article>
           <article class="card">
             <h3>Native builds</h3>
@@ -391,7 +417,7 @@ cargo build --release -p jgrep
   </main>
 
   <footer>
-    <div class="shell">Apache-2.0 licensed. Built as a Rust workspace around `jgrep-core` and the `jgrep` binary crate.</div>
+    <div class="shell">Apache-2.0 licensed. Built as a Rust workspace around <code>jgrep-core</code> and the <code>jgrep</code> binary crate.</div>
   </footer>
 </body>
 </html>

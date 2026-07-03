@@ -697,6 +697,25 @@ fn handle_key(
     }
 }
 
+fn filter_view(input: &str, cursor: usize, width: u16) -> (String, u16) {
+    let width = width as usize;
+    if width == 0 {
+        return (String::new(), 0);
+    }
+
+    let cursor_char = input[..cursor].chars().count();
+    let start_char = cursor_char.saturating_sub(width.saturating_sub(1));
+    let visible = input
+        .chars()
+        .skip(start_char)
+        .take(width)
+        .collect::<String>();
+    let cursor_column = cursor_char
+        .saturating_sub(start_char)
+        .min(width.saturating_sub(1)) as u16;
+    (visible, cursor_column)
+}
+
 fn render(frame: &mut Frame, session: &ExploreSession) {
     let outer = Layout::default()
         .direction(Direction::Vertical)
@@ -712,11 +731,13 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
         .constraints([Constraint::Percentage(36), Constraint::Percentage(64)])
         .split(outer[1]);
 
-    let filter = Paragraph::new(session.filter.input.as_str())
-        .block(Block::default().title("Filter").borders(Borders::ALL));
+    let filter_width = outer[0].width.saturating_sub(2);
+    let (filter_input, cursor_column) =
+        filter_view(&session.filter.input, session.filter.cursor, filter_width);
+    let filter =
+        Paragraph::new(filter_input).block(Block::default().title("Filter").borders(Borders::ALL));
     frame.render_widget(filter, outer[0]);
-    let cursor_x =
-        outer[0].x + 1 + (session.filter.cursor as u16).min(outer[0].width.saturating_sub(2));
+    let cursor_x = outer[0].x + 1 + cursor_column;
     frame.set_cursor_position(Position::new(cursor_x, outer[0].y + 1));
 
     let fields = session
@@ -976,5 +997,15 @@ mod tests {
         assert!(rendered.contains("Preview"));
         assert!(rendered.contains("Alice"));
         assert!(rendered.contains("Tab complete"));
+    }
+
+    #[test]
+    fn filter_view_keeps_long_input_cursor_visible() {
+        let input = "select(.items[] | .metadata.annotations.owner)";
+
+        let (visible, cursor_column) = filter_view(input, input.len(), 12);
+
+        assert_eq!(visible, "ions.owner)");
+        assert_eq!(cursor_column, 11);
     }
 }
