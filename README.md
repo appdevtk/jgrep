@@ -27,7 +27,7 @@ kubectl get pods -o yaml | jgrep explore
 
 ## Installation
 
-Download native binaries from the [Releases](https://github.com/subnix-work/jgrep/releases) page — no JVM required.
+Download native binaries from the [Releases](https://github.com/subnix-work/jgrep/releases) page.
 
 Linux x64 and macOS release assets provide the `jgrep` binary.
 
@@ -37,20 +37,10 @@ Linux x64 and macOS release assets provide the `jgrep` binary.
 git clone https://github.com/subnix-work/jgrep.git
 cd jgrep
 
-# Rust build
 cargo build --release -p jgrep
 ./target/release/jgrep '.name' file.json
 ./target/release/jgrep '.metadata.name' manifest.yaml
-
-# Legacy JVM reference build (requires Java 25+)
-cd jgrep/jgrep && ./mvnw package
-java -jar target/quarkus-app/quarkus-run.jar '.name' file.json
-
-cd ../ygrep && ./mvnw package
-java -jar target/quarkus-app/quarkus-run.jar '.metadata.name' manifest.yaml
 ```
-
-The Java `jgrep`/`ygrep` modules remain in the repository as reference implementations during the Rust migration.
 
 ## Usage
 
@@ -194,17 +184,11 @@ cat app.ndjson | jgrep --color-level --color-level-field app.level \
 
 ## What's new in 1.3.0
 
-- **Shared module** — common CLI logic extracted into a `shared` Maven module; reduces duplication between `jgrep` and `ygrep`
-- **Dependency upgrades** — `jackson-jq` 1.0.0 → 1.6.2 (bug-fixes, new jq built-ins `fromdateiso8601`, `todateiso8601`, `ceil`); `assertj` 3.26.3 → 3.27.7
-- **Docker native builds** — Linux CI now uses Docker container builds instead of installing GraalVM on the runner
+- **Rust-only `jgrep`** — one native binary handles JSON, NDJSON, YAML, and YAML multi-document input.
+- **Interactive explorer** — `jgrep explore` shows inferred fields, live jq generation, preview output, completion, history, and save/export shortcuts.
+- **Native CI and packaging** — Cargo builds, tests, release artifacts, and AUR metadata now target the Rust workspace directly.
 
-## What's new in 1.2.0
-
-- **`ygrep`** — new dedicated tool for YAML files; same flags and jq filter syntax as `jgrep`
-- **`jgrep` is now JSON-only** — `--yaml` flag removed; use `ygrep` for YAML input
-- **Parent POM** — shared dependency management across both modules
-
-## What's new in 1.1.0
+## Core features
 
 - **`-s` / `--slurp`** — collect all matching results from all files into one JSON array
 - **`-n` / `--null-input`** — evaluate a filter without reading any file
@@ -219,7 +203,6 @@ cat app.ndjson | jgrep --color-level --color-level-field app.level \
 - Rust + [clap](https://docs.rs/clap/) — CLI framework
 - [jaq](https://github.com/01mf02/jaq) — jq-compatible filter engine
 - [yaml_serde](https://crates.io/crates/yaml_serde) — YAML parsing
-- Legacy reference implementation: Quarkus + Picocli + jackson-jq
 
 ## License
 

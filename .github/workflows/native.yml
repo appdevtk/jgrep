@@ -14,59 +14,44 @@ permissions:
 
 jobs:
   linux-native:
-    name: Linux native — ${{ matrix.module }}
+    name: Linux native jgrep
     runs-on: ubuntu-24.04
-    strategy:
-      matrix:
-        module: [jgrep, ygrep]
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Set up Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "25"
-          cache: maven
-          cache-dependency-path: "**/pom.xml"
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Install shared module
-        run: ./jgrep/mvnw -B -ntp install -N -DskipTests && ./jgrep/mvnw -B -ntp install -pl shared -DskipTests
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v3
 
-      - name: Build native (Docker container)
-        working-directory: ${{ matrix.module }}
-        run: ./mvnw -B -ntp package -Pnative -Dquarkus.native.container-build=true -DskipTests
+      - name: Build release binary
+        run: cargo build --release -p jgrep
 
       - name: Smoke test
         run: |
-          runner=$(ls ${{ matrix.module }}/target/${{ matrix.module }}-*-runner | head -1)
-          "$runner" --version
-          if [ "${{ matrix.module }}" = "jgrep" ]; then
-            printf '%s\n' '{"name":"Alice"}' | "$runner" '.name'
-            "$runner" completion bash | grep -- '--from-file'
-          else
-            printf 'service:\n  name: checkout\n' | "$runner" '.service.name'
-            "$runner" completion bash | grep -- '--from-file'
-          fi
+          target/release/jgrep --version
+          printf '%s\n' '{"name":"Alice"}' | target/release/jgrep '.name'
+          printf 'service:\n  name: checkout\n' | target/release/jgrep '.service.name'
+          target/release/jgrep completion bash | grep -- '--from-file'
 
       - name: Prepare release asset
         run: |
-          runner=$(ls ${{ matrix.module }}/target/${{ matrix.module }}-*-runner | head -1)
-          mkdir -p ${{ matrix.module }}/target/dist
-          cp "$runner" ${{ matrix.module }}/target/dist/${{ matrix.module }}
-          chmod +x ${{ matrix.module }}/target/dist/${{ matrix.module }}
+          mkdir -p target/dist
+          cp target/release/jgrep target/dist/jgrep
+          chmod +x target/dist/jgrep
 
       - name: Upload Linux native executable
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.module }}-linux-x64
-          path: ${{ matrix.module }}/target/dist/${{ matrix.module }}
+          name: jgrep-linux-x64
+          path: target/dist/jgrep
           if-no-files-found: error
 
   macos-native:
-    name: macOS native — ${{ matrix.module }} (${{ matrix.arch }})
+    name: macOS native jgrep (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -74,63 +59,42 @@ jobs:
         include:
           - runner: macos-15
             arch: arm64
-            module: jgrep
             artifact: jgrep-macos-arm64
           - runner: macos-15-intel
             arch: x64
-            module: jgrep
             artifact: jgrep-macos-x64
-          - runner: macos-15
-            arch: arm64
-            module: ygrep
-            artifact: ygrep-macos-arm64
-          - runner: macos-15-intel
-            arch: x64
-            module: ygrep
-            artifact: ygrep-macos-x64
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Set up GraalVM
-        uses: graalvm/setup-graalvm@v1
-        with:
-          distribution: graalvm
-          java-version: "25"
-          native-image-job-reports: true
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Install shared module
-        run: ./jgrep/mvnw -B -ntp install -N -DskipTests && ./jgrep/mvnw -B -ntp install -pl shared -DskipTests
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v3
 
-      - name: Build native (GraalVM)
-        working-directory: ${{ matrix.module }}
-        run: ./mvnw -B -ntp package -Dnative -DskipTests
+      - name: Build release binary
+        run: cargo build --release -p jgrep
 
       - name: Smoke test
         run: |
-          runner=$(ls ${{ matrix.module }}/target/${{ matrix.module }}-*-runner | head -1)
-          "$runner" --version
-          if [ "${{ matrix.module }}" = "jgrep" ]; then
-            printf '%s\n' '{"name":"Alice"}' | "$runner" '.name'
-          else
-            printf 'service:\n  name: checkout\n' | "$runner" '.service.name'
-          fi
+          target/release/jgrep --version
+          printf '%s\n' '{"name":"Alice"}' | target/release/jgrep '.name'
+          printf 'service:\n  name: checkout\n' | target/release/jgrep '.service.name'
 
       - name: Package native executable
         run: |
-          runner=$(ls ${{ matrix.module }}/target/${{ matrix.module }}-*-runner | head -1)
-          mkdir -p ${{ matrix.module }}/target/dist
-          cp "$runner" ${{ matrix.module }}/target/dist/${{ matrix.module }}
-          chmod +x ${{ matrix.module }}/target/dist/${{ matrix.module }}
-          tar -czf ${{ matrix.module }}/target/dist/${{ matrix.artifact }}.tar.gz \
-            -C ${{ matrix.module }}/target/dist ${{ matrix.module }}
+          mkdir -p target/dist
+          cp target/release/jgrep target/dist/jgrep
+          chmod +x target/dist/jgrep
+          tar -czf target/dist/${{ matrix.artifact }}.tar.gz -C target/dist jgrep
 
       - name: Upload native executable
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.module }}/target/dist/${{ matrix.artifact }}.tar.gz
+          path: target/dist/${{ matrix.artifact }}.tar.gz
           if-no-files-found: error
 
   release:

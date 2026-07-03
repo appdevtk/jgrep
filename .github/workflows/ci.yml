@@ -11,35 +11,25 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: JVM build & test
+  rust:
+    name: Rust build, lint, and test
     runs-on: ubuntu-24.04
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Set up Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "25"
-          cache: maven
-          cache-dependency-path: "**/pom.xml"
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Build and test all modules
-        run: ./jgrep/mvnw -B -ntp verify
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v3
 
-      - name: Upload jgrep JVM package
-        uses: actions/upload-artifact@v6
-        with:
-          name: jgrep-jvm-quarkus-app
-          path: jgrep/target/quarkus-app/**
-          if-no-files-found: error
+      - name: Check formatting
+        run: cargo fmt --check
 
-      - name: Upload ygrep JVM package
-        uses: actions/upload-artifact@v6
-        with:
-          name: ygrep-jvm-quarkus-app
-          path: ygrep/target/quarkus-app/**
-          if-no-files-found: error
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test

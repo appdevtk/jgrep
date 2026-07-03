@@ -1,1556 +1,397 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>jgrep &amp; ygrep — grep for JSON and YAML</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>jgrep - grep for JSON, NDJSON, and YAML</title>
+  <meta name="description" content="jgrep filters JSON, NDJSON, and YAML with jq expressions from one native Rust CLI.">
   <style>
     :root {
-      --accent:  #22d3ee;
-      --accent2: #818cf8;
-      --bg:      #0f1117;
-      --surface: #1a1d27;
-      --border:  #2a2d3a;
-      --text:    #e2e8f0;
-      --muted:   #94a3b8;
-      --green:   #22c55e;
-      --red:     #ef4444;
-      --yellow:  #eab308;
-      --orange:  #f97316;
+      color-scheme: light dark;
+      --bg: #f6f7f4;
+      --fg: #17211c;
+      --muted: #59665f;
+      --panel: #ffffff;
+      --line: #d9dfd8;
+      --accent: #176b5d;
+      --accent-strong: #104d43;
+      --code: #111816;
+      --code-fg: #d8f3e7;
+      --warn: #8a4b12;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111715;
+        --fg: #edf3ef;
+        --muted: #a8b6ae;
+        --panel: #18211e;
+        --line: #2b3933;
+        --accent: #7ad0b8;
+        --accent-strong: #a3ead7;
+        --code: #080d0b;
+        --code-fg: #ddf8ed;
+        --warn: #e7b46f;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
 
     body {
+      margin: 0;
+      min-width: 320px;
       background: var(--bg);
-      color: var(--text);
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      line-height: 1.6;
+      color: var(--fg);
+      font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
-    /* ── Hero ── */
+    a {
+      color: var(--accent-strong);
+      text-decoration-thickness: 0.08em;
+      text-underline-offset: 0.18em;
+    }
+
+    .shell {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
     header {
-      background: linear-gradient(135deg, #1a1d27 0%, #0f1117 100%);
-      border-bottom: 1px solid var(--border);
-      padding: 3.5rem 2rem 2.5rem;
-      text-align: center;
-      position: relative;
-      overflow: hidden;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--bg) 92%, var(--panel));
     }
-    header::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(ellipse 60% 50% at 50% 0%, #22d3ee18 0%, transparent 70%);
-      pointer-events: none;
-    }
-    .logo {
-      font-size: 3.2rem;
-      font-weight: 800;
-      letter-spacing: -2px;
-      font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
-    }
-    .logo .j  { color: var(--accent); }
-    .logo .gr { color: var(--text); }
-    .logo .ep { color: var(--accent2); }
-    header .tagline {
-      color: var(--muted);
-      margin-top: .6rem;
-      font-size: 1.1rem;
-    }
-    .header-badges {
-      display: flex;
-      gap: .5rem;
-      justify-content: center;
-      margin-top: 1.2rem;
-      flex-wrap: wrap;
-    }
-    .hbadge {
-      padding: .25rem .75rem;
-      border-radius: 20px;
-      font-size: .78rem;
-      font-weight: 600;
-      border: 1px solid;
-    }
-    .hbadge.cyan   { border-color: var(--accent);  color: var(--accent);  background: #22d3ee10; }
-    .hbadge.indigo { border-color: var(--accent2); color: var(--accent2); background: #818cf810; }
-    .hbadge.green  { border-color: var(--green);   color: var(--green);   background: #22c55e10; }
-    .hbadge.orange { border-color: var(--orange);  color: var(--orange);  background: #f9731610; }
 
-    /* ── Nav ── */
     nav {
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      gap: .25rem;
-      padding: .5rem 1rem;
-      overflow-x: auto;
-    }
-    nav a {
-      color: var(--muted);
-      text-decoration: none;
-      font-size: .85rem;
-      padding: .35rem .75rem;
-      border-radius: 6px;
-      white-space: nowrap;
-      transition: background .15s, color .15s;
-    }
-    nav a:hover { background: var(--border); color: var(--text); }
-
-    /* ── Layout ── */
-    main { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem 5rem; }
-
-    section { margin-bottom: 3.5rem; scroll-margin-top: 3.5rem; }
-    section h2 {
-      font-size: 1.35rem;
-      margin-bottom: 1.25rem;
-      padding-bottom: .5rem;
-      border-bottom: 2px solid var(--border);
       display: flex;
       align-items: center;
-      gap: .5rem;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 64px;
     }
-    section h2 .icon { font-size: 1.2rem; }
 
-    /* ── Quick install box ── */
-    .install-box {
-      background: var(--surface);
-      border: 1px solid var(--accent);
-      border-radius: 10px;
-      padding: 1.25rem 1.5rem;
-      margin-bottom: 2rem;
+    .brand {
+      font-weight: 760;
+      font-size: 1.15rem;
+      letter-spacing: 0;
+    }
+
+    .nav-links {
       display: flex;
-      align-items: center;
-      gap: 1rem;
+      gap: 18px;
       flex-wrap: wrap;
-    }
-    .install-box span { color: var(--muted); font-size: .9rem; white-space: nowrap; }
-    .install-box code {
-      font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
-      color: var(--accent);
-      font-size: .95rem;
-      flex: 1;
+      justify-content: flex-end;
+      font-size: 0.95rem;
     }
 
-    /* ── What is jgrep ── */
-    .intro-grid {
+    .hero {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-      margin-bottom: 1.5rem;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 520px);
+      gap: 40px;
+      align-items: center;
+      padding: 58px 0 46px;
     }
-    .intro-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1.25rem 1.5rem;
-    }
-    .intro-card h3 {
-      font-size: .85rem;
-      text-transform: uppercase;
-      letter-spacing: .06em;
-      color: var(--muted);
-      margin-bottom: .6rem;
-    }
-    .intro-card p { font-size: .92rem; color: var(--text); }
-    .intro-card p + p { margin-top: .4rem; }
 
-    /* ── Code blocks ── */
-    .example {
-      margin-bottom: 1.75rem;
+    h1 {
+      margin: 0;
+      max-width: 760px;
+      font-size: clamp(2.4rem, 6vw, 5rem);
+      line-height: 0.98;
+      letter-spacing: 0;
     }
-    .example-label {
-      font-size: .82rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .06em;
-      color: var(--muted);
-      margin-bottom: .5rem;
-    }
-    .example-label .tag {
-      display: inline-block;
-      padding: .1rem .5rem;
-      border-radius: 4px;
-      font-size: .72rem;
-      margin-left: .4rem;
-      font-weight: 700;
-    }
-    .tag.basic   { background: #0f2e1a; color: var(--green); }
-    .tag.filter  { background: #1a1430; color: var(--accent2); }
-    .tag.advanced{ background: #1e1800; color: var(--yellow); }
-    .tag.flags   { background: #1e100a; color: var(--orange); }
 
-    .code-pair {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: .75rem;
-    }
-    .code-pane { }
-    .code-pane .pane-label {
-      font-size: .72rem;
-      font-weight: 600;
+    .lead {
+      max-width: 720px;
+      margin: 22px 0 0;
       color: var(--muted);
-      padding: .35rem .75rem;
-      background: #13151f;
-      border: 1px solid var(--border);
-      border-radius: 6px 6px 0 0;
-      border-bottom: none;
-      text-transform: uppercase;
-      letter-spacing: .05em;
+      font-size: 1.2rem;
     }
-    .code-pane .pane-label.input  { color: var(--accent); }
-    .code-pane .pane-label.output { color: var(--green); }
-    .code-pane .pane-label.cmd    { color: var(--accent2); }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 16px;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 680;
+      text-decoration: none;
+    }
+
+    .button.secondary {
+      background: transparent;
+      color: var(--accent-strong);
+    }
+
+    .terminal {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--code);
+      box-shadow: 0 18px 40px rgb(0 0 0 / 14%);
+    }
+
+    .terminal-title {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      min-height: 34px;
+      padding: 0 12px;
+      border-bottom: 1px solid rgb(255 255 255 / 10%);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ef6b62;
+    }
+
+    .dot:nth-child(2) {
+      background: #f3bf55;
+    }
+
+    .dot:nth-child(3) {
+      background: #64c884;
+    }
 
     pre {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 0 0 6px 6px;
-      padding: 1rem;
-      font-size: .8rem;
-      overflow-x: auto;
-      line-height: 1.6;
       margin: 0;
-    }
-    .single-pre pre {
-      border-radius: 6px;
-    }
-    code { font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace; }
-
-    /* syntax highlight helpers */
-    .hl-cmd    { color: #e2e8f0; }
-    .hl-pipe   { color: var(--muted); }
-    .hl-flag   { color: var(--orange); }
-    .hl-filter { color: var(--accent2); }
-    .hl-str    { color: #86efac; }
-    .hl-num    { color: #fb923c; }
-    .hl-key    { color: var(--accent); }
-    .hl-bool   { color: var(--yellow); }
-    .hl-null   { color: var(--red); }
-    .hl-com    { color: #475569; font-style: italic; }
-    .hl-out    { color: var(--green); }
-    .hl-err    { color: var(--red); }
-    .hl-warn   { color: var(--yellow); }
-    .hl-info   { color: var(--accent); }
-    .hl-debug  { color: var(--muted); }
-    .hl-trace  { color: #c084fc; }
-    .log-line {
-      display: block;
-      padding: .05rem .45rem;
-      border-left: 3px solid transparent;
-      white-space: pre;
-    }
-    .log-line.info  { color: #bae6fd; background: #0c4a6e33; border-left-color: #38bdf8; }
-    .log-line.warn  { color: #fef3c7; background: #713f1233; border-left-color: #facc15; }
-    .log-line.error { color: #fecaca; background: #7f1d1d33; border-left-color: #f87171; }
-    .log-line.debug { color: #cbd5e1; background: #33415533; border-left-color: #94a3b8; }
-    .note {
-      background: #0f1e2f;
-      border: 1px solid #1d4ed8;
-      border-radius: 8px;
-      color: var(--muted);
-      font-size: .9rem;
-      margin-bottom: 1.25rem;
-      padding: .9rem 1rem;
+      padding: 18px;
+      overflow-x: auto;
+      color: var(--code-fg);
+      font: 0.92rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
 
-    /* ── Options table ── */
-    .opts-table {
-      width: 100%;
-      border-collapse: collapse;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      overflow: hidden;
-      font-size: .85rem;
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
-    .opts-table th {
-      background: #13151f;
-      color: var(--muted);
-      font-size: .72rem;
-      text-transform: uppercase;
-      letter-spacing: .05em;
-      padding: .65rem 1rem;
-      text-align: left;
-      border-bottom: 1px solid var(--border);
-    }
-    .opts-table td {
-      padding: .6rem 1rem;
-      border-bottom: 1px solid var(--border);
-      vertical-align: top;
-    }
-    .opts-table tr:last-child td { border-bottom: none; }
-    .opts-table tr:hover td { background: #1e2130; }
-    .opts-table td code {
-      color: var(--accent2);
-      background: #13151f;
-      padding: .1rem .4rem;
-      border-radius: 4px;
-      font-size: .8rem;
-    }
-    .opts-table td:last-child { color: var(--muted); }
 
-    /* ── Exit codes ── */
-    .exit-grid {
+    section {
+      padding: 40px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    h2 {
+      margin: 0 0 18px;
+      font-size: 1.55rem;
+      letter-spacing: 0;
+    }
+
+    .grid {
       display: grid;
-      grid-template-columns: auto 1fr;
-      gap: .5rem 1.5rem;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      min-height: 150px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+    }
+
+    .card p,
+    .install p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .examples {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .example {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .example h3 {
+      margin: 0;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 1rem;
+    }
+
+    .example pre {
+      background: var(--code);
+    }
+
+    .install {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 520px);
+      gap: 24px;
       align-items: start;
     }
-    .exit-code {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 1.2rem;
-      font-weight: 700;
-      padding: .1rem .5rem;
-      border-radius: 6px;
-      text-align: center;
-    }
-    .exit-code.zero  { background: #14532d; color: var(--green); }
-    .exit-code.one   { background: #422006; color: var(--yellow); }
-    .exit-code.two   { background: #450a0a; color: var(--red); }
-    .exit-desc { font-size: .9rem; color: var(--muted); padding-top: .1rem; }
 
-    /* ── vs grep comparison ── */
-    .vs-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
+    .note {
+      margin-top: 14px;
+      color: var(--warn);
+      font-weight: 620;
     }
-    .vs-col h3 {
-      font-size: .82rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .06em;
-      padding: .4rem .75rem;
-      border-radius: 6px 6px 0 0;
-    }
-    .vs-col.grep h3 { background: #1e1800; color: var(--yellow); }
-    .vs-col.jgrep h3 { background: #0f1e2f; color: var(--accent); }
 
-    /* ── Cheatsheet grid ── */
-    .cheat-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: .75rem;
-    }
-    .cheat-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-    }
-    .cheat-card .cheat-head {
-      padding: .4rem .85rem;
-      font-size: .75rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .05em;
-      background: #13151f;
-      border-bottom: 1px solid var(--border);
+    footer {
+      padding: 30px 0 44px;
       color: var(--muted);
-    }
-    .cheat-card pre {
-      border-radius: 0;
-      border: none;
-      font-size: .77rem;
+      border-top: 1px solid var(--line);
+      font-size: 0.95rem;
     }
 
-    @media (max-width: 900px) {
-      .code-pair, .intro-grid, .vs-grid, .cheat-grid { grid-template-columns: 1fr; }
-    }
-    @media (max-width: 640px) {
-      .logo { font-size: 2.4rem; }
+    @media (max-width: 820px) {
+      .hero,
+      .install,
+      .examples,
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      nav {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 14px 0;
+      }
+
+      .nav-links {
+        justify-content: flex-start;
+      }
     }
   </style>
 </head>
 <body>
-
-<header>
-  <div class="logo">
-    <span class="j">j</span><span class="gr">gr</span><span class="ep">ep</span>
-    <span style="color:var(--muted);font-size:1.8rem;font-weight:400;letter-spacing:0"> &amp; </span>
-    <span style="color:var(--accent2)">y</span><span class="gr">gr</span><span class="ep">ep</span>
-  </div>
-  <p class="tagline">jgrep for JSON &middot; ygrep for YAML &mdash; filter with jq syntax, pipe like a pro</p>
-  <div class="header-badges">
-    <span class="hbadge cyan">jq 1.6 syntax</span>
-    <span class="hbadge cyan">JSON</span>
-    <span class="hbadge indigo">YAML</span>
-    <span class="hbadge cyan">stdin / files / dirs</span>
-    <span class="hbadge green">native binary</span>
-    <span class="hbadge orange">Quarkus · Jackson</span>
-    <span class="hbadge green">v1.3.0</span>
-  </div>
-</header>
-
-<nav>
-  <a href="#what">What is jgrep?</a>
-  <a href="#install">Usage</a>
-  <a href="#basics">Basics</a>
-  <a href="#filter">Filtering</a>
-  <a href="#arrays">Arrays</a>
-  <a href="#nested">Nested</a>
-  <a href="#flags">Flags</a>
-  <a href="#completion">Completion</a>
-  <a href="#multifile">Multi-File</a>
-  <a href="#logs">K8s Logs</a>
-  <a href="#advanced">Advanced</a>
-  <a href="#v13">New in 1.3</a>
-  <a href="#cheatsheet">Cheatsheet</a>
-  <a href="#exit">Exit Codes</a>
-</nav>
-
-<main>
-
-  <!-- ══════════════════════════════════════════════════════ WHAT IS JGREP -->
-  <section id="what">
-    <h2><span class="icon">🔍</span> What is jgrep?</h2>
-
-    <div class="intro-grid">
-      <div class="intro-card">
-        <h3>The Concept</h3>
-        <p><strong>jgrep</strong> is grep for JSON data — use <strong>jq filters</strong> to precisely query fields, filter objects, and search arrays across JSON and NDJSON files. <strong>ygrep</strong> is the same tool for YAML files, automatically discovering <code>.yaml</code> and <code>.yml</code> files when searching directories.</p>
-        <p>Perfect for log analysis, API responses, Kubernetes manifests, config files — anything structured.</p>
+  <header>
+    <nav class="shell" aria-label="Primary">
+      <div class="brand">jgrep</div>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#examples">Examples</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/subnix-work/jgrep">GitHub</a>
       </div>
-      <div class="intro-card">
-        <h3>How it works</h3>
-        <p><strong>jgrep</strong> reads JSON or NDJSON from <strong>stdin</strong> or <strong>files / directories</strong>, applies your jq filter, and outputs only the matches — one match per line. <strong>ygrep</strong> does the same for YAML input.</p>
-        <p>Both tools support the same flags and jq filter syntax — the only difference is the input format they expect.</p>
-      </div>
-      <div class="intro-card">
-        <h3>Why not just jq?</h3>
-        <p>jq transforms — jgrep <em>greps</em>. Exit code <code>0</code> = match found, exit code <code>1</code> = no match, just like you'd expect from grep.</p>
-        <p>Add flags like <code>-l</code> (filenames only), <code>-c</code> (count), and <code>-r</code> (recursive) — your grep muscle memory works here.</p>
-      </div>
-      <div class="intro-card">
-        <h3>One liner</h3>
-        <p><code>cat logs.json | jgrep '.[] | select(.level == "ERROR")'</code></p>
-        <p>That's it. All error entries from your JSON log — no AWK workarounds, no grepping raw JSON text.</p>
-      </div>
-    </div>
-  </section>
+    </nav>
+  </header>
 
-  <!-- ══════════════════════════════════════════════════════ INSTALL -->
-  <section id="install">
-    <h2><span class="icon">⚡</span> Usage</h2>
-
-    <div class="install-box">
-      <span>Syntax:</span>
-      <code>jgrep [OPTIONS] FILTER [FILE...]</code>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Invocation <span class="tag basic">basic</span></div>
-      <div class="single-pre">
-        <pre><code><span class="hl-com"># Read from stdin</span>
-<span class="hl-cmd">cat data.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> <span class="hl-filter">'.name'</span>
-
-<span class="hl-com"># Pass a file directly</span>
-<span class="hl-cmd">jgrep</span> <span class="hl-filter">'.name'</span> data.json
-
-<span class="hl-com"># Multiple files</span>
-<span class="hl-cmd">jgrep</span> <span class="hl-filter">'.status'</span> *.json
-
-<span class="hl-com"># Recursively search a directory</span>
-<span class="hl-cmd">jgrep</span> <span class="hl-flag">-r</span> <span class="hl-filter">'.name'</span> ./logs/</code></pre>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════ BASICS -->
-  <section id="basics">
-    <h2><span class="icon">📝</span> Basics — Reading Fields</h2>
-
-    <p style="color:var(--muted);margin-bottom:1.25rem;font-size:.92rem;">
-      All examples use <code>example.json</code>:
-    </p>
-
-    <div class="example single-pre">
-      <div class="example-label">example.json</div>
-      <pre><code>[
-  { <span class="hl-key">"id"</span>: <span class="hl-num">1</span>, <span class="hl-key">"name"</span>: <span class="hl-str">"Alice"</span>, <span class="hl-key">"age"</span>: <span class="hl-num">30</span>, <span class="hl-key">"city"</span>: <span class="hl-str">"Berlin"</span>, <span class="hl-key">"active"</span>: <span class="hl-bool">true</span>,  <span class="hl-key">"tags"</span>: [<span class="hl-str">"developer"</span>, <span class="hl-str">"java"</span>] },
-  { <span class="hl-key">"id"</span>: <span class="hl-num">2</span>, <span class="hl-key">"name"</span>: <span class="hl-str">"Bob"</span>,   <span class="hl-key">"age"</span>: <span class="hl-num">25</span>, <span class="hl-key">"city"</span>: <span class="hl-str">"Hamburg"</span>, <span class="hl-key">"active"</span>: <span class="hl-bool">false</span>, <span class="hl-key">"tags"</span>: [<span class="hl-str">"designer"</span>, <span class="hl-str">"css"</span>] },
-  { <span class="hl-key">"id"</span>: <span class="hl-num">3</span>, <span class="hl-key">"name"</span>: <span class="hl-str">"Clara"</span>, <span class="hl-key">"age"</span>: <span class="hl-num">35</span>, <span class="hl-key">"city"</span>: <span class="hl-str">"Berlin"</span>, <span class="hl-key">"active"</span>: <span class="hl-bool">true</span>,  <span class="hl-key">"tags"</span>: [<span class="hl-str">"developer"</span>, <span class="hl-str">"python"</span>] }
-]</code></pre>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Print all names <span class="tag basic">basic</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> <span class="hl-filter">'.[].name'</span></code></pre>
+  <main>
+    <div class="shell hero">
+      <div>
+        <h1>jgrep</h1>
+        <p class="lead">A native Rust CLI for filtering JSON, NDJSON, and YAML with jq expressions. Search files, pipe structured logs, query manifests, or inspect data interactively before printing results.</p>
+        <div class="actions">
+          <a class="button" href="https://github.com/subnix-work/jgrep/releases">Download</a>
+          <a class="button secondary" href="https://github.com/subnix-work/jgrep">Source</a>
         </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">Alice
-Bob
-Clara</span></code></pre>
-        </div>
+      </div>
+      <div class="terminal" aria-label="jgrep command example">
+        <div class="terminal-title"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <pre><code>$ kubectl get deploy checkout -o yaml \
+  | jgrep '.spec.template.spec.containers[].image'
+"registry.example/checkout:1.7.4"
+
+$ jgrep -r 'select(.level == "ERROR")' ./logs
+{"level":"ERROR","message":"payment declined"}</code></pre>
       </div>
     </div>
 
-    <div class="example">
-      <div class="example-label">Print all IDs <span class="tag basic">basic</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> <span class="hl-filter">'.[].id'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">1
-2
-3</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Print all cities <span class="tag basic">basic</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> <span class="hl-filter">'.[].city'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">Berlin
-Hamburg
-Berlin</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Iterate the full array (whole objects) <span class="tag basic">basic</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> <span class="hl-filter">'.[]'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"id":1,"name":"Alice","age":30,"city":"Berlin","active":true,"tags":["developer","java"]}
-{"id":2,"name":"Bob","age":25,"city":"Hamburg","active":false,"tags":["designer","css"]}
-{"id":3,"name":"Clara","age":35,"city":"Berlin","active":true,"tags":["developer","python"]}</span></code></pre>
+    <section id="features">
+      <div class="shell">
+        <h2>Features</h2>
+        <div class="grid">
+          <article class="card">
+            <h3>One command</h3>
+            <p>Use `jgrep` for JSON, newline-delimited JSON, YAML, and YAML multi-document input.</p>
+          </article>
+          <article class="card">
+            <h3>jq filters</h3>
+            <p>Run field projections, `select(...)`, array iteration, interpolation, and other jq-style expressions through `jaq`.</p>
+          </article>
+          <article class="card">
+            <h3>Recursive search</h3>
+            <p>Search directories for `.json`, `.yaml`, and `.yml` files with deterministic output and grep-style exit codes.</p>
+          </article>
+          <article class="card">
+            <h3>Shortcuts</h3>
+            <p>Use `-p address.city` and `-w status=active` when a full jq expression is more than you need.</p>
+          </article>
+          <article class="card">
+            <h3>Interactive explorer</h3>
+            <p>`jgrep explore` shows inferred fields, live preview output, generated jq, completion, history, and save/export shortcuts.</p>
+          </article>
+          <article class="card">
+            <h3>Native builds</h3>
+            <p>Install a single binary or build from source with Cargo. No runtime VM is required.</p>
+          </article>
         </div>
       </div>
-    </div>
+    </section>
 
-    <div class="example">
-      <div class="example-label">Pretty-print output <span class="tag basic">basic</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> <span class="hl-flag">--pretty</span> <span class="hl-filter">'.[]'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{
-  "id": 1,
-  "name": "Alice",
-  ...
-}</span></code></pre>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════ FILTER -->
-  <section id="filter">
-    <h2><span class="icon">🎯</span> Filtering with select()</h2>
-
-    <p style="color:var(--muted);margin-bottom:1.25rem;font-size:.92rem;">
-      <code>select(CONDITION)</code> returns only the objects for which the condition is true. That's the core of jgrep.
-    </p>
-
-    <div class="example">
-      <div class="example-label">Only entries from Berlin <span class="tag filter">filter</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(.city == "Berlin")'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"id":1,"name":"Alice",...,"city":"Berlin",...}
-{"id":3,"name":"Clara",...,"city":"Berlin",...}</span></code></pre>
+    <section id="examples">
+      <div class="shell">
+        <h2>Examples</h2>
+        <div class="examples">
+          <article class="example">
+            <h3>Filter records</h3>
+            <pre><code>jgrep 'select(.age &gt;= 18) | .name' users.ndjson
+jgrep -w status=active -p name users.ndjson</code></pre>
+          </article>
+          <article class="example">
+            <h3>Query YAML</h3>
+            <pre><code>jgrep '.metadata.name' service.yaml
+jgrep -r 'select(.kind == "Deployment")' k8s/</code></pre>
+          </article>
+          <article class="example">
+            <h3>Explore before printing</h3>
+            <pre><code>jgrep explore config.yaml
+jgrep explore --filter status=active logs.ndjson</code></pre>
+          </article>
+          <article class="example">
+            <h3>Structured logs</h3>
+            <pre><code>jgrep -C -w log.level=ERROR logs.ndjson
+jgrep --color-level --color-level-field app.level app.ndjson</code></pre>
+          </article>
         </div>
       </div>
-    </div>
+    </section>
 
-    <div class="example">
-      <div class="example-label">Only active users <span class="tag filter">filter</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(.active == true)'</span></code></pre>
+    <section id="install">
+      <div class="shell install">
+        <div>
+          <h2>Install</h2>
+          <p>Download Linux x64 or macOS binaries from the release page, or build the Rust workspace locally.</p>
+          <p class="note">Current source builds target the Rust workspace only.</p>
         </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"id":1,"name":"Alice",...,"active":true,...}
-{"id":3,"name":"Clara",...,"active":true,...}</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Only inactive users <span class="tag filter">filter</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(.active == false)'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"id":2,"name":"Bob",...,"active":false,...}</span></code></pre>
+        <div class="terminal" aria-label="jgrep installation commands">
+          <div class="terminal-title"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <pre><code>git clone https://github.com/subnix-work/jgrep.git
+cd jgrep
+cargo build --release -p jgrep
+./target/release/jgrep '.name' file.json</code></pre>
         </div>
       </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Numeric comparison: age &gt; 28 <span class="tag filter">filter</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(.age > 28)'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"id":1,"name":"Alice","age":30,...}
-{"id":3,"name":"Clara","age":35,...}</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Age in a range: 25–30 <span class="tag filter">filter</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(.age >= 25 and .age <= 30)'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"id":1,"name":"Alice","age":30,...}
-{"id":2,"name":"Bob","age":25,...}</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">OR condition: Berlin or Hamburg <span class="tag filter">filter</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(.city == "Berlin" or .city == "Hamburg")'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"id":1,...,"city":"Berlin",...}
-{"id":2,...,"city":"Hamburg",...}
-{"id":3,...,"city":"Berlin",...}</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Only the name of matched objects <span class="tag filter">filter</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(.city == "Berlin") | .name'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">Alice
-Clara</span></code></pre>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════ ARRAYS -->
-  <section id="arrays">
-    <h2><span class="icon">📋</span> Searching Arrays</h2>
-
-    <div class="example">
-      <div class="example-label">Filter by a tag value <span class="tag filter">filter</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(.tags[] == "developer")'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"id":1,"name":"Alice",...,"tags":["developer","java"]}
-{"id":3,"name":"Clara",...,"tags":["developer","python"]}</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">List all tags from all entries <span class="tag basic">basic</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[].tags[]'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">developer
-java
-designer
-css
-developer
-python</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">First tag of each entry <span class="tag basic">basic</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[].tags[0]'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">developer
-designer
-developer</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Using <code>contains</code>: tag array includes a value <span class="tag filter">filter</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(.tags | contains(["java"]))'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"id":1,"name":"Alice",...,"tags":["developer","java"]}</span></code></pre>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════ NESTED -->
-  <section id="nested">
-    <h2><span class="icon">🌿</span> Nested Objects</h2>
-
-    <p style="color:var(--muted);margin-bottom:1.25rem;font-size:.92rem;">
-      Deeper JSON structures — like API responses or logs — are navigated with simple dot notation.
-    </p>
-
-    <div class="example single-pre">
-      <div class="example-label">Example structure (nested.json)</div>
-      <pre><code>[
-  {
-    <span class="hl-key">"user"</span>: { <span class="hl-key">"id"</span>: <span class="hl-num">1</span>, <span class="hl-key">"name"</span>: <span class="hl-str">"Alice"</span> },
-    <span class="hl-key">"address"</span>: { <span class="hl-key">"city"</span>: <span class="hl-str">"Berlin"</span>, <span class="hl-key">"zip"</span>: <span class="hl-str">"10115"</span> },
-    <span class="hl-key">"scores"</span>: [<span class="hl-num">95</span>, <span class="hl-num">87</span>, <span class="hl-num">92</span>]
-  },
-  {
-    <span class="hl-key">"user"</span>: { <span class="hl-key">"id"</span>: <span class="hl-num">2</span>, <span class="hl-key">"name"</span>: <span class="hl-str">"Bob"</span> },
-    <span class="hl-key">"address"</span>: { <span class="hl-key">"city"</span>: <span class="hl-str">"Hamburg"</span>, <span class="hl-key">"zip"</span>: <span class="hl-str">"20095"</span> },
-    <span class="hl-key">"scores"</span>: [<span class="hl-num">70</span>, <span class="hl-num">80</span>]
-  }
-]</code></pre>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Read a deeply nested field <span class="tag basic">basic</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat nested.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[].user.name'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">Alice
-Bob</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Filter by city in a nested object <span class="tag filter">filter</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat nested.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(.address.city == "Berlin")'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"user":{"id":1,"name":"Alice"},"address":{"city":"Berlin",...},...}</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Filter by a high score in an array <span class="tag filter">filter</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat nested.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(.scores[] > 90)'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"user":{"id":1,"name":"Alice"},...,"scores":[95,87,92]}</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Only the user name from Berlin entries <span class="tag filter">filter</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat nested.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(.address.city == "Berlin") | .user.name'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">Alice</span></code></pre>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════ FLAGS -->
-  <section id="flags">
-    <h2><span class="icon">🚩</span> Flags &amp; Options</h2>
-
-    <table class="opts-table">
-      <thead>
-        <tr>
-          <th>Flag</th>
-          <th>Long form</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><code>-r</code></td>
-          <td><code>--recursive</code></td>
-          <td>Recurse into directories — jgrep picks up <code>.json</code> files, ygrep picks up <code>.yaml</code> and <code>.yml</code> files</td>
-        </tr>
-        <tr>
-          <td><code>-l</code></td>
-          <td><code>--files-with-matches</code></td>
-          <td>Only print filenames that contain matches</td>
-        </tr>
-        <tr>
-          <td><code>-c</code></td>
-          <td><code>--count</code></td>
-          <td>Print match count per file instead of the values</td>
-        </tr>
-        <tr>
-          <td><code>-s</code></td>
-          <td><code>--slurp</code></td>
-          <td>Collect <em>all</em> matching results (across all files) into a single JSON array</td>
-        </tr>
-        <tr>
-          <td><code>-n</code></td>
-          <td><code>--null-input</code></td>
-          <td>Use <code>null</code> as input — evaluate the filter without reading any file</td>
-        </tr>
-        <tr>
-          <td><code>-f</code></td>
-          <td><code>--from-file=FILE</code></td>
-          <td>Read the filter expression from a <code>.jq</code> file instead of the command line</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td><code>--pretty</code></td>
-          <td>Pretty-print JSON output with indentation</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td><code>--color-level</code></td>
-          <td>Color each output line by log level (<code>log.level</code>, <code>level</code>, <code>severity</code>, ...)</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td><code>--color-level-field FIELD</code></td>
-          <td>Use a custom field for <code>--color-level</code>, for example <code>app.level</code></td>
-        </tr>
-        <tr>
-          <td></td>
-          <td><code>--no-color</code></td>
-          <td>Disable syntax-highlighted output (also respects <code>$NO_COLOR</code>)</td>
-        </tr>
-        <tr>
-          <td><code>-h</code></td>
-          <td><code>--help</code></td>
-          <td>Show help message</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td><code>--version</code></td>
-          <td>Print version number</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <br>
-
-    <div class="example">
-      <div class="example-label"><code>--pretty</code> — formatted output <span class="tag flags">flag</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> <span class="hl-flag">--pretty</span> \
-  <span class="hl-filter">'.[] | select(.city == "Berlin")'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{
-  "id": 1,
-  "name": "Alice",
-  "age": 30,
-  "city": "Berlin",
-  "active": true,
-  "tags": ["developer","java"]
-}
-{
-  "id": 3,
-  ...</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label"><code>-c</code> — count matches <span class="tag flags">flag</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">jgrep</span> <span class="hl-flag">-c</span> \
-  <span class="hl-filter">'.[] | select(.active == true)'</span> \
-  example.json</code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">2</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label"><code>-l</code> — filenames only <span class="tag flags">flag</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">jgrep</span> <span class="hl-flag">-l</span> \
-  <span class="hl-filter">'.[] | select(.city == "Berlin")'</span> \
-  *.json</code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">example.json</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label"><code>-r</code> — recursive directory search <span class="tag flags">flag</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">jgrep</span> <span class="hl-flag">-r</span> \
-  <span class="hl-filter">'select(.level == "ERROR")'</span> \
-  ./logs/</code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">logs/app-2024-01.json: {"level":"ERROR","msg":"..."}
-logs/app-2024-02.json: {"level":"ERROR","msg":"..."}</span></code></pre>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════ COMPLETION -->
-  <section id="completion">
-    <h2><span class="icon">⌨️</span> Shell Completion</h2>
-
-    <div class="note">
-      jgrep can print completion scripts for common shells. Generate the script once, then load it from your shell's normal completion directory or profile.
-    </div>
-
-    <div class="example">
-      <div class="example-label">Generate completion scripts <span class="tag flags">subcommand</span></div>
-      <div class="single-pre">
-        <pre><code><span class="hl-com"># Bash</span>
-<span class="hl-cmd">jgrep</span> completion bash <span class="hl-pipe">&gt;</span> ~/.local/share/bash-completion/completions/jgrep
-
-<span class="hl-com"># Zsh</span>
-<span class="hl-cmd">jgrep</span> completion zsh <span class="hl-pipe">&gt;</span> ~/.zsh/completions/_jgrep
-
-<span class="hl-com"># Fish</span>
-<span class="hl-cmd">jgrep</span> completion fish <span class="hl-pipe">&gt;</span> ~/.config/fish/completions/jgrep.fish
-
-<span class="hl-com"># PowerShell</span>
-<span class="hl-cmd">jgrep</span> completion powershell <span class="hl-pipe">&gt;&gt;</span> $PROFILE</code></pre>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════ MULTIFILE -->
-  <section id="multifile">
-    <h2><span class="icon">📂</span> Multiple Files &amp; Pipelines</h2>
-
-    <div class="example">
-      <div class="example-label">Multiple files at once <span class="tag basic">basic</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">jgrep</span> <span class="hl-filter">'.name'</span> users.json admins.json</code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">users.json: Alice
-users.json: Bob
-admins.json: Root</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Inside a shell pipeline <span class="tag basic">basic</span></div>
-      <div class="single-pre">
-        <pre><code><span class="hl-com"># Pipe an API response directly</span>
-<span class="hl-cmd">curl</span> <span class="hl-flag">-s</span> https://api.example.com/users <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> <span class="hl-filter">'.[] | select(.role == "admin")'</span>
-
-<span class="hl-com"># Filter logs and count</span>
-<span class="hl-cmd">cat app.log.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> <span class="hl-filter">'select(.level == "ERROR")'</span> <span class="hl-pipe">|</span> <span class="hl-cmd">wc -l</span>
-
-<span class="hl-com"># Combine with grep</span>
-<span class="hl-cmd">jgrep</span> <span class="hl-filter">'.[] | .name'</span> users.json <span class="hl-pipe">|</span> <span class="hl-cmd">grep</span> <span class="hl-str">"Ali"</span>
-
-<span class="hl-com"># Write results to a file</span>
-<span class="hl-cmd">cat events.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> <span class="hl-filter">'select(.type == "click")'</span> <span class="hl-pipe">&gt;</span> clicks.json</code></pre>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">NDJSON — one JSON object per line <span class="tag basic">basic</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label input">logs.ndjson</div>
-          <pre><code>{"level":"INFO","msg":"started"}
-{"level":"ERROR","msg":"connection refused"}
-{"level":"INFO","msg":"retrying"}
-{"level":"ERROR","msg":"timeout"}</code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label cmd">Command + Output</div>
-          <pre><code><span class="hl-cmd">cat logs.ndjson</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'select(.level == "ERROR")'</span>
-
-<span class="hl-out">{"level":"ERROR","msg":"connection refused"}
-{"level":"ERROR","msg":"timeout"}</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">ygrep — same jq filters for YAML files <span class="tag basic">yaml</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label input">deployment.yaml</div>
-          <pre><code>apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: checkout
-spec:
-  replicas: 3
-  template:
-    spec:
-      containers:
-        - name: app
-          image: ghcr.io/acme/checkout:1.2.3</code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label cmd">Command + Output</div>
-          <pre><code><span class="hl-cmd">ygrep</span> <span class="hl-filter">'.spec.template.spec.containers[].image'</span> deployment.yaml
-
-<span class="hl-out">ghcr.io/acme/checkout:1.2.3</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">ygrep — query YAML from stdin <span class="tag basic">yaml</span></div>
-      <div class="single-pre">
-        <pre><code><span class="hl-cmd">kubectl get deploy checkout -o yaml</span> <span class="hl-pipe">|</span> <span class="hl-cmd">ygrep</span> \
-  <span class="hl-filter">'.spec.template.spec.containers[].image'</span></code></pre>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════ LOGS -->
-  <section id="logs">
-    <h2><span class="icon">🧾</span> Kubernetes / ECS Logs</h2>
-
-    <div class="note">
-      Kubernetes containers and AWS ECS often write one JSON object per line. jgrep reads that NDJSON directly, so you can filter by structured fields first and then project the match into a readable text line.
-    </div>
-
-    <div class="example">
-      <div class="example-label">ECS-style log input <span class="tag basic">ndjson</span></div>
-      <div class="single-pre">
-        <pre><code><span class="hl-key">{"@timestamp"</span>:<span class="hl-str">"2026-06-28T08:15:30Z"</span>,<span class="hl-key">"log.level"</span>:<span class="hl-str">"INFO"</span>,<span class="hl-key">"message"</span>:<span class="hl-str">"payment accepted"</span>,<span class="hl-key">"service.name"</span>:<span class="hl-str">"checkout"</span>,<span class="hl-key">"kubernetes"</span>:{<span class="hl-key">"namespace"</span>:<span class="hl-str">"shop"</span>,<span class="hl-key">"pod"</span>:<span class="hl-str">"checkout-7b9"</span>},<span class="hl-key">"details"</span>:{<span class="hl-key">"order_id"</span>:<span class="hl-str">"A-1001"</span>,<span class="hl-key">"amount"</span>:<span class="hl-num">42.5</span>},<span class="hl-key">"additions"</span>:{<span class="hl-key">"tenant"</span>:<span class="hl-str">"eu"</span>},<span class="hl-key">"custom_tracker"</span>:{<span class="hl-key">"trace_id"</span>:<span class="hl-str">"tr-91"</span>}}
-<span class="hl-key">{"@timestamp"</span>:<span class="hl-str">"2026-06-28T08:16:02Z"</span>,<span class="hl-key">"log.level"</span>:<span class="hl-str">"WARN"</span>,<span class="hl-key">"message"</span>:<span class="hl-str">"slow downstream response"</span>,<span class="hl-key">"service.name"</span>:<span class="hl-str">"checkout"</span>,<span class="hl-key">"kubernetes"</span>:{<span class="hl-key">"namespace"</span>:<span class="hl-str">"shop"</span>,<span class="hl-key">"pod"</span>:<span class="hl-str">"checkout-7b9"</span>},<span class="hl-key">"details"</span>:{<span class="hl-key">"dependency"</span>:<span class="hl-str">"inventory"</span>,<span class="hl-key">"latency_ms"</span>:<span class="hl-num">850</span>},<span class="hl-key">"additions"</span>:{<span class="hl-key">"tenant"</span>:<span class="hl-str">"eu"</span>},<span class="hl-key">"custom_tracker"</span>:{<span class="hl-key">"trace_id"</span>:<span class="hl-str">"tr-92"</span>}}
-<span class="hl-key">{"@timestamp"</span>:<span class="hl-str">"2026-06-28T08:16:12Z"</span>,<span class="hl-key">"log.level"</span>:<span class="hl-str">"ERROR"</span>,<span class="hl-key">"message"</span>:<span class="hl-str">"payment declined"</span>,<span class="hl-key">"service.name"</span>:<span class="hl-str">"checkout"</span>,<span class="hl-key">"kubernetes"</span>:{<span class="hl-key">"namespace"</span>:<span class="hl-str">"shop"</span>,<span class="hl-key">"pod"</span>:<span class="hl-str">"checkout-7b9"</span>},<span class="hl-key">"details"</span>:{<span class="hl-key">"order_id"</span>:<span class="hl-str">"A-1002"</span>,<span class="hl-key">"reason"</span>:<span class="hl-str">"card_expired"</span>},<span class="hl-key">"additions"</span>:{<span class="hl-key">"tenant"</span>:<span class="hl-str">"eu"</span>},<span class="hl-key">"custom_tracker"</span>:{<span class="hl-key">"trace_id"</span>:<span class="hl-str">"tr-93"</span>}}</code></pre>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">JSON to human-readable text <span class="tag advanced">text</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat ecs.ndjson</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'"\(.["@timestamp"]) [\(.["log.level"])] \(.["service.name"])/\(.kubernetes.pod): \(.message)"'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output without JSON braces</div>
-          <pre><code><span class="hl-out">2026-06-28T08:15:30Z [INFO] checkout/checkout-7b9: payment accepted
-2026-06-28T08:16:02Z [WARN] checkout/checkout-7b9: slow downstream response
-2026-06-28T08:16:12Z [ERROR] checkout/checkout-7b9: payment declined</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Filter objects, then print text <span class="tag filter">filter</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat ecs.ndjson</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'select(.["log.level"] == "ERROR" and .kubernetes.namespace == "shop") |
-   "\(.["@timestamp"]) ERROR \(.["service.name"]): \(.message) trace=\(.custom_tracker.trace_id)"'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-err">2026-06-28T08:16:12Z ERROR checkout: payment declined trace=tr-93</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Unpack details / additions / custom_tracker <span class="tag advanced">advanced</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat ecs.ndjson</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'select(.details.reason? or .details.latency_ms?) |
-   "\(.["@timestamp"]) [\(.["log.level"])] \(.message) tenant=\(.additions.tenant) trace=\(.custom_tracker.trace_id) details=\(.details)"'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-warn">2026-06-28T08:16:02Z [WARN] slow downstream response tenant=eu trace=tr-92 details={"dependency":"inventory","latency_ms":850}</span>
-<span class="hl-err">2026-06-28T08:16:12Z [ERROR] payment declined tenant=eu trace=tr-93 details={"order_id":"A-1002","reason":"card_expired"}</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Color whole lines by log level <span class="tag flags">flag</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat ecs.ndjson</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> <span class="hl-flag">--color-level</span> \
-  <span class="hl-filter">'"[\(.["log.level"])] \(.["@timestamp"]) \(.message) trace=\(.custom_tracker.trace_id)"'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Visual result</div>
-          <pre><code><span class="log-line info">[INFO]  2026-06-28T08:15:30Z payment accepted trace=tr-91</span>
-<span class="log-line warn">[WARN]  2026-06-28T08:16:02Z slow downstream response trace=tr-92</span>
-<span class="log-line error">[ERROR] 2026-06-28T08:16:12Z payment declined trace=tr-93</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Custom log level field <span class="tag flags">flag</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat app.ndjson</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> <span class="hl-flag">--color-level</span> \
-  <span class="hl-flag">--color-level-field</span> app.level \
-  <span class="hl-filter">'"[\(.app.level)] \(.message)"'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="log-line warn">[WARN] slow downstream response</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Kubernetes pod logs <span class="tag basic">pipeline</span></div>
-      <div class="single-pre">
-        <pre><code><span class="hl-com"># Filter live logs from kubectl, keep only checkout errors, print readable lines</span>
-<span class="hl-cmd">kubectl logs</span> <span class="hl-flag">-n</span> shop deploy/checkout <span class="hl-flag">--since=10m</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> <span class="hl-flag">--color-level</span> \
-  <span class="hl-filter">'select(.["log.level"] == "ERROR") |
-   "\(.["@timestamp"]) \(.kubernetes.pod // "-") \(.message) order=\(.details.order_id // "-")"'</span></code></pre>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════ ADVANCED -->
-  <section id="advanced">
-    <h2><span class="icon">🧠</span> Advanced Filters</h2>
-
-    <div class="example">
-      <div class="example-label">Regex: names starting with A <span class="tag advanced">advanced</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(.name | test("^A"))'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"id":1,"name":"Alice",...}</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Regex: names containing "a" (case-insensitive) <span class="tag advanced">advanced</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(.name | test("[Aa]"; "i"))'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"id":1,"name":"Alice",...}
-{"id":3,"name":"Clara",...}</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">has() — check if a field exists <span class="tag advanced">advanced</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(has("tags"))'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output (all entries that have a "tags" field)</div>
-          <pre><code><span class="hl-out">{"id":1,...}
-{"id":2,...}
-{"id":3,...}</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Project specific fields only <span class="tag advanced">advanced</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | {name: .name, city: .city}'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"name":"Alice","city":"Berlin"}
-{"name":"Bob","city":"Hamburg"}
-{"name":"Clara","city":"Berlin"}</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Combined: Berlin developers with field projection <span class="tag advanced">advanced</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select(.city == "Berlin" and (.tags[] == "developer")) | {name: .name, age: .age}'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"name":"Alice","age":30}
-{"name":"Clara","age":35}</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">length — filter by array size <span class="tag advanced">advanced</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | select((.tags | length) > 1) | .name'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output (people with more than one tag)</div>
-          <pre><code><span class="hl-out">Alice
-Bob
-Clara</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">type — filter by value type <span class="tag advanced">advanced</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-com"># Only output fields whose value is a number</span>
-<span class="hl-cmd">cat example.json</span> <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> \
-  <span class="hl-filter">'.[] | .age | select(type == "number")'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">30
-25
-35</span></code></pre>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════ NEW IN 1.3 -->
-  <section id="v13">
-    <h2><span class="icon">✨</span> New in 1.3.0</h2>
-
-    <div class="example">
-      <div class="example-label">jackson-jq upgraded to 1.6.2 — new built-ins available</div>
-      <div class="single-pre">
-        <pre><code><span class="hl-com"># Convert ISO 8601 timestamp to Unix epoch</span>
-<span class="hl-cmd">jgrep</span> <span class="hl-filter">'.ts | fromdateiso8601'</span> events.ndjson
-
-<span class="hl-com"># Convert Unix epoch back to ISO 8601</span>
-<span class="hl-cmd">jgrep</span> <span class="hl-flag">-n</span> <span class="hl-filter">'now | todateiso8601'</span>
-
-<span class="hl-com"># ceil() math function</span>
-<span class="hl-cmd">jgrep</span> <span class="hl-filter">'.ratio | ceil'</span> stats.json</code></pre>
-      </div>
-    </div>
-
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════ NEW IN 1.2 -->
-  <section id="v12">
-    <h2><span class="icon">✨</span> New in 1.2.0</h2>
-
-    <div class="example">
-      <div class="example-label"><code>ygrep</code> — dedicated tool for YAML files</div>
-      <div class="single-pre">
-        <pre><code><span class="hl-com"># Filter Kubernetes manifests</span>
-<span class="hl-cmd">ygrep</span> <span class="hl-filter">'.spec.replicas'</span> deployment.yaml
-
-<span class="hl-com"># Recurse a directory of YAML files</span>
-<span class="hl-cmd">ygrep</span> <span class="hl-flag">-r</span> <span class="hl-filter">'select(.kind == "Deployment")'</span> k8s/
-
-<span class="hl-com"># jgrep is now JSON-only — use ygrep for YAML</span></code></pre>
-      </div>
-    </div>
-
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════ NEW IN 1.1 -->
-  <section id="v11">
-    <h2><span class="icon">✨</span> New in 1.1.0</h2>
-
-    <div class="example">
-      <div class="example-label"><code>-s</code> / <code>--slurp</code> — collect all results into one array <span class="tag flags">flag</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-com"># Gather all matching names into a JSON array</span>
-<span class="hl-cmd">jgrep</span> <span class="hl-flag">-s</span> \
-  <span class="hl-filter">'.[] | select(.active) | .name'</span> \
-  users.json
-
-<span class="hl-com"># Aggregate across multiple files</span>
-<span class="hl-cmd">jgrep</span> <span class="hl-flag">-s</span> <span class="hl-filter">'.price'</span> products/*.json \
-  <span class="hl-pipe">|</span> <span class="hl-cmd">jgrep</span> <span class="hl-flag">-n</span> <span class="hl-filter">'add / length'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">["Alice","Clara"]</span>
-
-<span class="hl-com"># average price across all files</span>
-<span class="hl-out">24.99</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label"><code>-n</code> / <code>--null-input</code> — evaluate without any file <span class="tag flags">flag</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-com"># Generate data without any input file</span>
-<span class="hl-cmd">jgrep</span> <span class="hl-flag">-n</span> <span class="hl-filter">'{ts: now | strftime("%Y-%m-%d"), ok: true}'</span>
-
-<span class="hl-com"># Simple arithmetic</span>
-<span class="hl-cmd">jgrep</span> <span class="hl-flag">-n</span> <span class="hl-filter">'[range(5)] | add'</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label output">Output</div>
-          <pre><code><span class="hl-out">{"ts":"2026-06-28","ok":true}</span>
-
-<span class="hl-out">10</span></code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label"><code>-f</code> / <code>--from-file</code> — load filter from a <code>.jq</code> file <span class="tag flags">flag</span></div>
-      <div class="code-pair">
-        <div class="code-pane">
-          <div class="pane-label input">filter.jq</div>
-          <pre><code><span class="hl-filter">.[]
-| select(.level == "ERROR" and (.msg | test("timeout")))
-| {ts: .timestamp, msg: .msg}</span></code></pre>
-        </div>
-        <div class="code-pane">
-          <div class="pane-label cmd">Command</div>
-          <pre><code><span class="hl-cmd">jgrep</span> <span class="hl-flag">-f</span> filter.jq logs.ndjson</code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-label">Syntax highlighting — automatic when writing to a terminal <span class="tag flags">flag</span></div>
-      <div class="single-pre">
-        <pre><code><span class="hl-com"># Keys, strings, numbers, and booleans are colorized automatically</span>
-<span class="hl-cmd">jgrep</span> <span class="hl-filter">'.[] | select(.active)'</span> users.json
-<span class="hl-com"># → keys are cyan, strings green, numbers yellow, booleans/null magenta</span>
-
-<span class="hl-com"># Disable with --no-color or $NO_COLOR env variable</span>
-<span class="hl-cmd">NO_COLOR=1 jgrep</span> <span class="hl-filter">'.name'</span> users.json</code></pre>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════ CHEATSHEET -->
-  <section id="cheatsheet">
-    <h2><span class="icon">📖</span> Cheatsheet</h2>
-
-    <div class="cheat-grid">
-      <div class="cheat-card">
-        <div class="cheat-head">Fields</div>
-        <pre><code><span class="hl-filter">.name</span>              <span class="hl-com"># read a field</span>
-<span class="hl-filter">.user.name</span>         <span class="hl-com"># nested field</span>
-<span class="hl-filter">.tags[0]</span>           <span class="hl-com"># array index</span>
-<span class="hl-filter">.tags[-1]</span>          <span class="hl-com"># last element</span>
-<span class="hl-filter">.[]</span>                <span class="hl-com"># iterate all values</span>
-<span class="hl-filter">.tags[]</span>            <span class="hl-com"># all array elements</span></code></pre>
-      </div>
-      <div class="cheat-card">
-        <div class="cheat-head">select() — Conditions</div>
-        <pre><code><span class="hl-filter">select(.x == "val")</span>       <span class="hl-com"># equal</span>
-<span class="hl-filter">select(.x != "val")</span>       <span class="hl-com"># not equal</span>
-<span class="hl-filter">select(.n > 10)</span>           <span class="hl-com"># greater than</span>
-<span class="hl-filter">select(.n >= 10)</span>          <span class="hl-com"># greater or equal</span>
-<span class="hl-filter">select(.a and .b)</span>         <span class="hl-com"># AND</span>
-<span class="hl-filter">select(.a or .b)</span>          <span class="hl-com"># OR</span>
-<span class="hl-filter">select(.a | not)</span>          <span class="hl-com"># NOT</span></code></pre>
-      </div>
-      <div class="cheat-card">
-        <div class="cheat-head">String Functions</div>
-        <pre><code><span class="hl-filter">select(.s | test("regex"))</span>     <span class="hl-com"># regex match</span>
-<span class="hl-filter">select(.s | startswith("A"))</span>   <span class="hl-com"># prefix</span>
-<span class="hl-filter">select(.s | endswith("z"))</span>     <span class="hl-com"># suffix</span>
-<span class="hl-filter">select(.s | contains("sub"))</span>   <span class="hl-com"># substring</span>
-<span class="hl-filter">.name | ascii_downcase</span>         <span class="hl-com"># lowercase</span>
-<span class="hl-filter">.name | ltrimstr("Mr.")</span>        <span class="hl-com"># trim prefix</span></code></pre>
-      </div>
-      <div class="cheat-card">
-        <div class="cheat-head">Array Functions</div>
-        <pre><code><span class="hl-filter">select(.arr | length > 2)</span>          <span class="hl-com"># length</span>
-<span class="hl-filter">select(.arr[] == "x")</span>              <span class="hl-com"># find element</span>
-<span class="hl-filter">select(.arr | contains(["x"]))</span>    <span class="hl-com"># contains</span>
-<span class="hl-filter">select(.arr | any(. > 5))</span>         <span class="hl-com"># at least one</span>
-<span class="hl-filter">select(.arr | all(. > 0))</span>         <span class="hl-com"># all match</span>
-<span class="hl-filter">.arr | first</span>                       <span class="hl-com"># first element</span></code></pre>
-      </div>
-      <div class="cheat-card">
-        <div class="cheat-head">Pipes &amp; Projection</div>
-        <pre><code><span class="hl-filter">.[] | select(.x) | .y</span>     <span class="hl-com"># filter + project</span>
-<span class="hl-filter">{name: .name, id: .id}</span>    <span class="hl-com"># build new object</span>
-<span class="hl-filter">[.[] | .name]</span>             <span class="hl-com"># array of names</span>
-<span class="hl-filter">.[] | .x, .y</span>             <span class="hl-com"># multiple fields</span></code></pre>
-      </div>
-      <div class="cheat-card">
-        <div class="cheat-head">Flags</div>
-        <pre><code><span class="hl-flag">-r</span>         <span class="hl-com"># recursive (directory)</span>
-<span class="hl-flag">-l</span>         <span class="hl-com"># filenames with matches only</span>
-<span class="hl-flag">-c</span>         <span class="hl-com"># count matches</span>
-<span class="hl-flag">-s</span>         <span class="hl-com"># slurp — collect into array</span>
-<span class="hl-flag">-n</span>         <span class="hl-com"># null-input (no file needed)</span>
-<span class="hl-flag">-f FILE</span>    <span class="hl-com"># read filter from .jq file</span>
-<span class="hl-flag">--pretty</span>   <span class="hl-com"># pretty-print JSON output</span>
-<span class="hl-flag">--color-level</span> <span class="hl-com"># color log lines by level</span>
-<span class="hl-flag">--no-color</span> <span class="hl-com"># disable color output</span>
-<span class="hl-cmd">completion</span> <span class="hl-filter">bash</span> <span class="hl-com"># print shell completion</span></code></pre>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════ EXIT CODES -->
-  <section id="exit">
-    <h2><span class="icon">🔢</span> Exit Codes</h2>
-
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.5rem;">
-      <div class="exit-grid">
-        <div class="exit-code zero">0</div>
-        <div class="exit-desc">At least one match found — just like grep</div>
-        <div class="exit-code one">1</div>
-        <div class="exit-desc">No match — filter returned nothing</div>
-        <div class="exit-code two">2</div>
-        <div class="exit-desc">Error — invalid filter or JSON parse failure</div>
-      </div>
-
-      <div style="margin-top:1.25rem;" class="single-pre">
-        <pre><code><span class="hl-com"># Use in shell scripts</span>
-<span class="hl-cmd">jgrep</span> <span class="hl-filter">'.[] | select(.active == true)'</span> users.json
-<span class="hl-cmd">if</span> [ $? <span class="hl-filter">-eq</span> <span class="hl-num">0</span> ]; <span class="hl-cmd">then</span>
-  <span class="hl-cmd">echo</span> <span class="hl-str">"Active users found"</span>
-<span class="hl-cmd">else</span>
-  <span class="hl-cmd">echo</span> <span class="hl-str">"No active users"</span>
-<span class="hl-cmd">fi</span></code></pre>
-      </div>
-    </div>
-  </section>
-
-</main>
-
+    </section>
+  </main>
+
+  <footer>
+    <div class="shell">Apache-2.0 licensed. Built as a Rust workspace around `jgrep-core` and the `jgrep` binary crate.</div>
+  </footer>
 </body>
 </html>
