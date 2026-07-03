@@ -566,6 +566,7 @@ fn print_results(session: &ExploreSession) -> i32 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExplorerExit {
     PrintResults,
     PrintFilter,
@@ -609,50 +610,91 @@ fn run_tui_loop(
             continue;
         }
 
-        match key.code {
-            KeyCode::Enter => {
-                session.record_history();
-                break ExplorerExit::PrintResults;
-            }
-            KeyCode::Esc => break ExplorerExit::Quit,
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                break ExplorerExit::Quit
-            }
-            KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                session.record_history();
-                break ExplorerExit::PrintFilter;
-            }
-            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                session.save_filter();
-            }
-            KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                session.load_history_entry(true);
-            }
-            KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                session.load_history_entry(false);
-            }
-            KeyCode::Tab => {
-                session.autocomplete_filter();
-            }
-            KeyCode::Left => session.move_cursor_left(),
-            KeyCode::Right => session.move_cursor_right(),
-            KeyCode::Home => session.filter.cursor = 0,
-            KeyCode::End => session.filter.cursor = session.filter.input.len(),
-            KeyCode::Delete => session.delete(),
-            KeyCode::Up => session.scroll_fields(-1),
-            KeyCode::Down => session.scroll_fields(1),
-            KeyCode::PageUp => session.scroll_preview(-10),
-            KeyCode::PageDown => session.scroll_preview(10),
-            KeyCode::Backspace => {
-                session.backspace();
-            }
-            KeyCode::Char(ch) => {
-                session.insert_char(ch);
-            }
-            _ => {}
+        if let Some(exit) = handle_key(session, key.code, key.modifiers) {
+            break exit;
         }
     };
     Ok(result)
+}
+
+fn handle_key(
+    session: &mut ExploreSession,
+    code: KeyCode,
+    modifiers: KeyModifiers,
+) -> Option<ExplorerExit> {
+    match code {
+        KeyCode::Enter => {
+            session.record_history();
+            Some(ExplorerExit::PrintResults)
+        }
+        KeyCode::Esc => Some(ExplorerExit::Quit),
+        KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => Some(ExplorerExit::Quit),
+        KeyCode::Char('y') if modifiers.contains(KeyModifiers::CONTROL) => {
+            session.record_history();
+            Some(ExplorerExit::PrintFilter)
+        }
+        KeyCode::Char('s') if modifiers.contains(KeyModifiers::CONTROL) => {
+            session.save_filter();
+            None
+        }
+        KeyCode::Char('p') if modifiers.contains(KeyModifiers::CONTROL) => {
+            session.load_history_entry(true);
+            None
+        }
+        KeyCode::Char('n') if modifiers.contains(KeyModifiers::CONTROL) => {
+            session.load_history_entry(false);
+            None
+        }
+        KeyCode::Tab => {
+            session.autocomplete_filter();
+            None
+        }
+        KeyCode::Left => {
+            session.move_cursor_left();
+            None
+        }
+        KeyCode::Right => {
+            session.move_cursor_right();
+            None
+        }
+        KeyCode::Home => {
+            session.filter.cursor = 0;
+            None
+        }
+        KeyCode::End => {
+            session.filter.cursor = session.filter.input.len();
+            None
+        }
+        KeyCode::Delete => {
+            session.delete();
+            None
+        }
+        KeyCode::Up => {
+            session.scroll_fields(-1);
+            None
+        }
+        KeyCode::Down => {
+            session.scroll_fields(1);
+            None
+        }
+        KeyCode::PageUp => {
+            session.scroll_preview(-10);
+            None
+        }
+        KeyCode::PageDown => {
+            session.scroll_preview(10);
+            None
+        }
+        KeyCode::Backspace => {
+            session.backspace();
+            None
+        }
+        KeyCode::Char(ch) => {
+            session.insert_char(ch);
+            None
+        }
+        _ => None,
+    }
 }
 
 fn render(frame: &mut Frame, session: &ExploreSession) {
@@ -711,15 +753,19 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
     frame.render_widget(
         List::new(fields).block(
             Block::default()
-                .title(format!(
-                    "Fields {}/{}",
-                    session
-                        .preview
-                        .field_scroll
-                        .saturating_add(1)
-                        .min(session.data.fields.len()),
-                    session.data.fields.len()
-                ))
+                .title(if session.data.fields.is_empty() {
+                    "Fields 0/0".to_owned()
+                } else {
+                    format!(
+                        "Fields {}/{}",
+                        session
+                            .preview
+                            .field_scroll
+                            .saturating_add(1)
+                            .min(session.data.fields.len()),
+                        session.data.fields.len()
+                    )
+                })
                 .borders(Borders::ALL),
         ),
         body[0],
@@ -764,6 +810,7 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::backend::TestBackend;
 
     #[test]
     fn preview_applies_shortcut_filter() {
@@ -804,5 +851,130 @@ mod tests {
         let error = read_values(Some(&file), 4).unwrap_err();
 
         assert!(error.contains("--max-input-bytes"));
+    }
+
+    #[test]
+    fn autocomplete_cycles_candidates_with_type_info() {
+        let values = parse_values(
+            InputKind::Json,
+            br#"{"name":"Alice","namespace":"prod","node":"worker-1"}"#,
+            false,
+        )
+        .unwrap();
+        let config = ExploreConfig {
+            max_input_bytes: 1024 * 1024,
+            max_schema_documents: 10,
+            max_preview_results: 10,
+            max_schema_depth: 4,
+        };
+        let mut session = ExploreSession::new(values, "n".to_owned(), config);
+
+        handle_key(&mut session, KeyCode::Tab, KeyModifiers::NONE);
+
+        assert_eq!(session.filter.input, "name");
+        assert!(session
+            .message
+            .as_deref()
+            .unwrap_or("")
+            .contains("[string]"));
+
+        handle_key(&mut session, KeyCode::Tab, KeyModifiers::NONE);
+
+        assert_eq!(session.filter.input, "namespace");
+        assert!(session
+            .message
+            .as_deref()
+            .unwrap_or("")
+            .contains("completion 2/3"));
+    }
+
+    #[test]
+    fn cursor_editing_inserts_and_deletes_in_middle() {
+        let values = parse_values(InputKind::Json, br#"{"name":"Alice"}"#, false).unwrap();
+        let config = ExploreConfig {
+            max_input_bytes: 1024 * 1024,
+            max_schema_documents: 10,
+            max_preview_results: 10,
+            max_schema_depth: 4,
+        };
+        let mut session = ExploreSession::new(values, "name".to_owned(), config);
+
+        handle_key(&mut session, KeyCode::Left, KeyModifiers::NONE);
+        handle_key(&mut session, KeyCode::Left, KeyModifiers::NONE);
+        handle_key(&mut session, KeyCode::Char('X'), KeyModifiers::NONE);
+
+        assert_eq!(session.filter.input, "naXme");
+        assert_eq!(session.filter.cursor, 3);
+
+        handle_key(&mut session, KeyCode::Backspace, KeyModifiers::NONE);
+        handle_key(&mut session, KeyCode::Delete, KeyModifiers::NONE);
+
+        assert_eq!(session.filter.input, "nae");
+        assert_eq!(session.filter.cursor, 2);
+    }
+
+    #[test]
+    fn history_navigation_loads_previous_filters() {
+        let values = parse_values(
+            InputKind::Json,
+            br#"{"name":"Alice","status":"active"}"#,
+            false,
+        )
+        .unwrap();
+        let config = ExploreConfig {
+            max_input_bytes: 1024 * 1024,
+            max_schema_documents: 10,
+            max_preview_results: 10,
+            max_schema_depth: 4,
+        };
+        let mut session = ExploreSession::new(values, String::new(), config);
+        session.filter.history = vec!["name".to_owned(), "status=active".to_owned()];
+
+        handle_key(&mut session, KeyCode::Char('p'), KeyModifiers::CONTROL);
+
+        assert_eq!(session.filter.input, "status=active");
+        assert_eq!(
+            session.preview.lines,
+            [r#"{"name":"Alice","status":"active"}"#]
+        );
+
+        handle_key(&mut session, KeyCode::Char('p'), KeyModifiers::CONTROL);
+
+        assert_eq!(session.filter.input, "name");
+        assert_eq!(session.preview.lines, ["Alice"]);
+    }
+
+    #[test]
+    fn render_snapshot_contains_core_regions() {
+        let values = parse_values(
+            InputKind::Json,
+            br#"{"name":"Alice","status":"active"}"#,
+            false,
+        )
+        .unwrap();
+        let config = ExploreConfig {
+            max_input_bytes: 1024 * 1024,
+            max_schema_documents: 10,
+            max_preview_results: 10,
+            max_schema_depth: 4,
+        };
+        let session = ExploreSession::new(values, "name".to_owned(), config);
+        let backend = TestBackend::new(100, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal.draw(|frame| render(frame, &session)).unwrap();
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+
+        assert!(rendered.contains("Filter"));
+        assert!(rendered.contains("Fields 1/2"));
+        assert!(rendered.contains("Preview"));
+        assert!(rendered.contains("Alice"));
+        assert!(rendered.contains("Tab complete"));
     }
 }
