@@ -1,5 +1,7 @@
-use std::io::{self, IsTerminal, Read, Write};
+use std::io::{self, BufRead, IsTerminal, Read, Write};
 use std::path::Path;
+use std::sync::mpsc::{self, Receiver};
+use std::thread;
 use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -24,6 +26,46 @@ use crate::{output, shortcuts, NAME};
 pub fn run(args: ExploreArgs) -> i32 {
     let mut err = io::BufWriter::new(io::stderr());
     let config = ExploreConfig::from_args(&args);
+
+    if args.input.is_none()
+        && !args.print
+        && io::stdout().is_terminal()
+        && !io::stdin().is_terminal()
+    {
+        match prepare_stdin_tui(config.max_input_bytes) {
+            Ok(StdinTuiInput::Streaming(first_line)) => {
+                let stream = spawn_json_line_stream(first_line, config.max_input_bytes);
+                let mut session =
+                    ExploreSession::new_streaming(args.filter.unwrap_or_default(), config);
+                return finish_tui(
+                    run_tui_streaming(&mut session, &stream),
+                    &mut session,
+                    &mut err,
+                );
+            }
+            Ok(StdinTuiInput::Buffered(bytes)) => {
+                let values = match parse_values(input::detect_stdin_kind(&bytes), &bytes, true)
+                    .map_err(|e| format!("stdin: {e}"))
+                {
+                    Ok(values) => values,
+                    Err(e) => {
+                        let _ = writeln!(err, "{NAME}: explore: {e}");
+                        let _ = err.flush();
+                        return 2;
+                    }
+                };
+                let mut session =
+                    ExploreSession::new(values, args.filter.unwrap_or_default(), config);
+                return finish_tui(run_tui(&mut session), &mut session, &mut err);
+            }
+            Err(e) => {
+                let _ = writeln!(err, "{NAME}: explore: {e}");
+                let _ = err.flush();
+                return 2;
+            }
+        }
+    }
+
     let values = match read_values(args.input.as_deref(), config.max_input_bytes) {
         Ok(values) => values,
         Err(e) => {
@@ -43,8 +85,16 @@ pub fn run(args: ExploreArgs) -> i32 {
         return if has_error { 2 } else { 0 };
     }
 
-    match run_tui(&mut session) {
-        Ok(ExplorerExit::PrintResults) => print_results(&session),
+    finish_tui(run_tui(&mut session), &mut session, &mut err)
+}
+
+fn finish_tui(
+    result: io::Result<ExplorerExit>,
+    session: &mut ExploreSession,
+    err: &mut dyn Write,
+) -> i32 {
+    match result {
+        Ok(ExplorerExit::PrintResults) => print_results(session),
         Ok(ExplorerExit::PrintFilter) => {
             session.record_history();
             println!("{}", session.filter.generated);
@@ -57,6 +107,102 @@ pub fn run(args: ExploreArgs) -> i32 {
             2
         }
     }
+}
+
+enum StdinTuiInput {
+    Streaming(Vec<u8>),
+    Buffered(Vec<u8>),
+}
+
+fn prepare_stdin_tui(max_input_bytes: usize) -> Result<StdinTuiInput, String> {
+    let stdin = io::stdin();
+    let mut reader = io::BufReader::new(stdin.lock());
+    let mut first_line = Vec::new();
+    reader
+        .read_until(b'\n', &mut first_line)
+        .map_err(|e| format!("stdin: {e}"))?;
+
+    if first_line.len() > max_input_bytes {
+        return Err(format!(
+            "stdin: input is larger than --max-input-bytes ({max_input_bytes} bytes)"
+        ));
+    }
+
+    if input::is_streamable_json_line(&first_line) {
+        return Ok(StdinTuiInput::Streaming(first_line));
+    }
+
+    let mut bytes = Vec::with_capacity(max_input_bytes.min(1024 * 1024));
+    bytes.extend_from_slice(&first_line);
+    reader
+        .take(max_input_bytes.saturating_sub(bytes.len()) as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("stdin: {e}"))?;
+    if bytes.len() > max_input_bytes {
+        return Err(format!(
+            "stdin: input is larger than --max-input-bytes ({max_input_bytes} bytes)"
+        ));
+    }
+    Ok(StdinTuiInput::Buffered(bytes))
+}
+
+enum StreamEvent {
+    Line(Vec<u8>),
+    Error(String),
+    End,
+}
+
+fn spawn_json_line_stream(first_line: Vec<u8>, max_input_bytes: usize) -> Receiver<StreamEvent> {
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let stdin = io::stdin();
+        let mut reader = io::BufReader::new(stdin.lock());
+        let mut bytes_read = 0usize;
+        send_stream_line(&tx, &first_line, &mut bytes_read, max_input_bytes);
+        if bytes_read > max_input_bytes {
+            let _ = tx.send(StreamEvent::End);
+            return;
+        }
+
+        let mut line = Vec::new();
+        loop {
+            line.clear();
+            match reader.read_until(b'\n', &mut line) {
+                Ok(0) => break,
+                Ok(_) => send_stream_line(&tx, &line, &mut bytes_read, max_input_bytes),
+                Err(e) => {
+                    let _ = tx.send(StreamEvent::Error(format!("stdin: {e}")));
+                    break;
+                }
+            }
+            if bytes_read > max_input_bytes {
+                break;
+            }
+        }
+        let _ = tx.send(StreamEvent::End);
+    });
+    rx
+}
+
+fn send_stream_line(
+    tx: &mpsc::Sender<StreamEvent>,
+    line: &[u8],
+    bytes_read: &mut usize,
+    max_input_bytes: usize,
+) {
+    *bytes_read = bytes_read.saturating_add(line.len());
+    if *bytes_read > max_input_bytes {
+        let _ = tx.send(StreamEvent::Error(format!(
+            "stdin: input is larger than --max-input-bytes ({max_input_bytes} bytes)"
+        )));
+        return;
+    }
+
+    let trimmed = input::trim_ascii_whitespace(line);
+    if trimmed.is_empty() {
+        return;
+    }
+    let _ = tx.send(StreamEvent::Line(trimmed.to_vec()));
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -169,7 +315,14 @@ struct ExploreSession {
     filter: FilterState,
     preview: PreviewState,
     persistence: ExplorerPersistence,
+    config: ExploreConfig,
+    stream: Option<StreamState>,
     message: Option<String>,
+}
+
+struct StreamState {
+    ended: bool,
+    errors: Vec<String>,
 }
 
 impl ExploreSession {
@@ -202,10 +355,44 @@ impl ExploreSession {
             persistence: ExplorerPersistence {
                 last_filter_file: std::env::var_os("JGREP_LAST_FILTER_FILE"),
             },
+            config,
+            stream: None,
             message: None,
         };
         session.refresh();
         session
+    }
+
+    fn new_streaming(filter: String, config: ExploreConfig) -> Self {
+        let mut session = Self::new(Vec::new(), filter, config);
+        session.stream = Some(StreamState {
+            ended: false,
+            errors: Vec::new(),
+        });
+        session.message = Some("streaming stdin: waiting for JSON log lines".to_owned());
+        session
+    }
+
+    fn append_stream_value(&mut self, value: Val) {
+        self.data.values.push(value);
+        self.data.fields = schema::infer_schema(
+            &self.data.values,
+            self.config.max_schema_documents,
+            self.config.max_schema_depth,
+        );
+        self.refresh();
+    }
+
+    fn record_stream_error(&mut self, error: String) {
+        if let Some(stream) = &mut self.stream {
+            stream.errors.push(error);
+        }
+    }
+
+    fn end_stream(&mut self) {
+        if let Some(stream) = &mut self.stream {
+            stream.ended = true;
+        }
     }
 
     fn refresh(&mut self) {
@@ -580,7 +767,29 @@ fn run_tui(session: &mut ExploreSession) -> io::Result<ExplorerExit> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let result = run_tui_loop(&mut terminal, session);
+    let result = run_tui_loop(&mut terminal, session, None);
+    let raw_mode_result = disable_raw_mode();
+    let screen_result = execute!(terminal.backend_mut(), LeaveAlternateScreen);
+    let cursor_result = terminal.show_cursor();
+
+    let exit = result?;
+    raw_mode_result?;
+    screen_result?;
+    cursor_result?;
+    Ok(exit)
+}
+
+fn run_tui_streaming(
+    session: &mut ExploreSession,
+    stream: &Receiver<StreamEvent>,
+) -> io::Result<ExplorerExit> {
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    let result = run_tui_loop(&mut terminal, session, Some(stream));
     let raw_mode_result = disable_raw_mode();
     let screen_result = execute!(terminal.backend_mut(), LeaveAlternateScreen);
     let cursor_result = terminal.show_cursor();
@@ -595,8 +804,13 @@ fn run_tui(session: &mut ExploreSession) -> io::Result<ExplorerExit> {
 fn run_tui_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     session: &mut ExploreSession,
+    stream: Option<&Receiver<StreamEvent>>,
 ) -> io::Result<ExplorerExit> {
     let result = loop {
+        if let Some(stream) = stream {
+            drain_stream(session, stream);
+        }
+
         terminal.draw(|frame| render(frame, session))?;
 
         if !event::poll(Duration::from_millis(150))? {
@@ -615,6 +829,49 @@ fn run_tui_loop(
         }
     };
     Ok(result)
+}
+
+fn drain_stream(session: &mut ExploreSession, stream: &Receiver<StreamEvent>) {
+    let mut added = 0usize;
+    let mut ended = false;
+    for event in stream.try_iter() {
+        match event {
+            StreamEvent::Line(line) => match parse_stream_line(&line) {
+                Ok(values) => {
+                    for value in values {
+                        session.append_stream_value(value);
+                        added += 1;
+                    }
+                }
+                Err(error) => session.record_stream_error(error),
+            },
+            StreamEvent::Error(error) => session.record_stream_error(error),
+            StreamEvent::End => {
+                session.end_stream();
+                ended = true;
+            }
+        }
+    }
+    if added > 0 || ended {
+        let status = if session.stream.as_ref().is_some_and(|stream| stream.ended) {
+            "complete"
+        } else {
+            "live"
+        };
+        session.message = Some(format!(
+            "streaming stdin: {} documents ({status})",
+            session.data.values.len()
+        ));
+    }
+}
+
+fn parse_stream_line(line: &[u8]) -> Result<Vec<Val>, String> {
+    let values =
+        input::parse_many(InputKind::Json, line).map_err(|e| format!("stdin: parse error: {e}"))?;
+    values
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("stdin: parse error: {e}"))
 }
 
 fn handle_key(
@@ -808,11 +1065,20 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
     );
 
     let hint = session.message.clone().unwrap_or_else(|| {
-        format!(
+        let mut hint = format!(
             "{} preview matches | generated: {} | Tab complete | Arrows/Page scroll | Ctrl-P/N history | Enter print | Ctrl-Y jq | Ctrl-S save | Esc quit",
             session.preview.lines.len(),
             session.filter.generated
-        )
+        );
+        if let Some(stream) = &session.stream {
+            let status = if stream.ended { "complete" } else { "live" };
+            hint = format!(
+                "{hint} | stream {status}: {} docs, {} errors",
+                session.data.values.len(),
+                stream.errors.len()
+            );
+        }
+        hint
     });
     let hint_style = if session.filter.error.is_some() {
         Style::default().fg(Color::Red)

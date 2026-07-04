@@ -51,6 +51,26 @@ pub fn detect_stdin_kind(bytes: &[u8]) -> InputKind {
     }
 }
 
+pub fn is_streamable_json_line(line: &[u8]) -> bool {
+    let trimmed = trim_ascii_whitespace(line);
+    matches!(trimmed.first(), Some(b'{'))
+        && parse_many(InputKind::Json, trimmed)
+            .is_ok_and(|values| !values.is_empty() && values.into_iter().all(|value| value.is_ok()))
+}
+
+pub fn trim_ascii_whitespace(bytes: &[u8]) -> &[u8] {
+    let start = bytes
+        .iter()
+        .position(|b| !b.is_ascii_whitespace())
+        .unwrap_or(bytes.len());
+    let end = bytes
+        .iter()
+        .rposition(|b| !b.is_ascii_whitespace())
+        .map(|idx| idx + 1)
+        .unwrap_or(start);
+    &bytes[start..end]
+}
+
 pub fn parse_many(kind: InputKind, bytes: &[u8]) -> Result<Vec<Result<Val, String>>, String> {
     match kind {
         InputKind::Json => parse_json_many(bytes),

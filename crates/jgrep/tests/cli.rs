@@ -41,6 +41,40 @@ fn filters_ndjson_documents() {
 }
 
 #[test]
+fn streams_ndjson_from_stdin_line_by_line() {
+    jgrep()
+        .args(["-p", "message"])
+        .write_stdin(
+            "{\"message\":\"accepted\",\"log\":{\"level\":\"INFO\"}}\n\
+             {\"message\":\"payment declined\",\"log\":{\"level\":\"ERROR\"}}\n",
+        )
+        .assert()
+        .success()
+        .stdout("accepted\npayment declined\n");
+}
+
+#[test]
+fn streaming_stdin_count_and_parse_error_after_match() {
+    jgrep()
+        .args(["-c", "-w", "log.level=ERROR"])
+        .write_stdin(
+            "{\"message\":\"accepted\",\"log\":{\"level\":\"INFO\"}}\n\
+             {\"message\":\"payment declined\",\"log\":{\"level\":\"ERROR\"}}\n",
+        )
+        .assert()
+        .success()
+        .stdout("1\n");
+
+    jgrep()
+        .args(["-p", "message"])
+        .write_stdin("{\"message\":\"accepted\"}\n{\"message\":\n")
+        .assert()
+        .code(2)
+        .stdout("accepted\n")
+        .stderr(predicate::str::contains("parse error"));
+}
+
+#[test]
 fn reads_yaml_with_same_command() {
     let dir = tempdir().unwrap();
     let file = dir.path().join("data.yaml");

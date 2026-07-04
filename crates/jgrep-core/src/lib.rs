@@ -9,7 +9,7 @@ mod output;
 mod schema;
 mod shortcuts;
 
-use std::io::{self, Read, Write};
+use std::io::{self, BufRead, Read, Write};
 
 use cli::{Cli, Command};
 use input::{InputKind, Source};
@@ -152,8 +152,41 @@ fn process_stdin(
     state: &mut RunState,
     slurp: &mut Vec<jaq_json::Val>,
 ) {
+    let stdin = io::stdin();
+    let mut reader = io::BufReader::new(stdin.lock());
+    let mut first_line = Vec::new();
+    match reader.read_until(b'\n', &mut first_line) {
+        Ok(0) => {
+            process_bytes(
+                cli,
+                matcher,
+                Source::Stdin,
+                false,
+                InputKind::Json,
+                Vec::new(),
+                out,
+                err,
+                state,
+                slurp,
+            );
+            return;
+        }
+        Ok(_) => {}
+        Err(e) => {
+            let _ = writeln!(err, "{NAME}: stdin: {e}");
+            state.had_error = true;
+            return;
+        }
+    }
+
+    if input::is_streamable_json_line(&first_line) {
+        process_json_lines_stdin(cli, matcher, first_line, reader, out, err, state, slurp);
+        return;
+    }
+
     let mut bytes = Vec::new();
-    if let Err(e) = io::stdin().read_to_end(&mut bytes) {
+    bytes.extend_from_slice(&first_line);
+    if let Err(e) = reader.read_to_end(&mut bytes) {
         let _ = writeln!(err, "{NAME}: stdin: {e}");
         state.had_error = true;
         return;
@@ -170,6 +203,90 @@ fn process_stdin(
         state,
         slurp,
     );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn process_json_lines_stdin(
+    cli: &Cli,
+    matcher: &Matcher,
+    first_line: Vec<u8>,
+    mut reader: io::BufReader<io::StdinLock<'_>>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    state: &mut RunState,
+    slurp: &mut Vec<jaq_json::Val>,
+) {
+    let mut match_count = 0usize;
+    let mut line = first_line;
+
+    loop {
+        if !input::trim_ascii_whitespace(&line).is_empty() {
+            match_count += process_json_line(cli, matcher, &line, out, err, state, slurp);
+            let _ = out.flush();
+        }
+
+        line.clear();
+        match reader.read_until(b'\n', &mut line) {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(e) => {
+                let _ = writeln!(err, "{NAME}: stdin: {e}");
+                state.had_error = true;
+                break;
+            }
+        }
+    }
+
+    if !cli.slurp {
+        if cli.count {
+            let _ = writeln!(out, "{match_count}");
+        } else if cli.files_with_matches && match_count > 0 {
+            let _ = writeln!(out, "stdin");
+        }
+    }
+}
+
+fn process_json_line(
+    cli: &Cli,
+    matcher: &Matcher,
+    line: &[u8],
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    state: &mut RunState,
+    slurp: &mut Vec<jaq_json::Val>,
+) -> usize {
+    let values = match input::parse_many(InputKind::Json, line) {
+        Ok(values) => values,
+        Err(e) => {
+            let _ = writeln!(err, "{NAME}: stdin: parse error: {e}");
+            state.had_error = true;
+            return 0;
+        }
+    };
+
+    let mut match_count = 0usize;
+    for value in values {
+        match value {
+            Ok(value) => {
+                match_count += process_value(
+                    cli,
+                    matcher,
+                    Some("stdin".to_owned()),
+                    false,
+                    value,
+                    out,
+                    err,
+                    state,
+                    slurp,
+                );
+            }
+            Err(e) => {
+                let _ = writeln!(err, "{NAME}: stdin: parse error: {e}");
+                state.had_error = true;
+            }
+        }
+    }
+    match_count
 }
 
 #[allow(clippy::too_many_arguments)]
