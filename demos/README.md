@@ -47,4 +47,4 @@ JGREP_DEMO_DELAY=0.45 demos/scripts/k8s-log-stream.sh |
   jgrep explore
 ```
 
-In the live TUI demo, type `log.level=ERROR`, press `Ctrl-O`, then type `message` to switch from filtering records to choosing the printed output.
+In the live TUI demo, type `log.level=ERROR`, press `Ctrl-F` and `Ctrl-L`, press `Ctrl-O`, then type `{level:.log.level,message,trace_id}` to switch from filtering records to choosing a multi-field printed output.

@@ -21,7 +21,7 @@ use crate::cli::ExploreArgs;
 use crate::input::{self, InputKind};
 use crate::matcher::{self, Matcher};
 use crate::schema::{self, FieldSummary};
-use crate::{output, shortcuts, NAME};
+use crate::{color, output, shortcuts, NAME};
 
 pub fn run(args: ExploreArgs) -> i32 {
     let mut err = io::BufWriter::new(io::stderr());
@@ -314,7 +314,7 @@ fn compose_explore_jq(filter_input: &str, output_input: &str) -> Result<String, 
         return shortcuts::expression_to_jq(filter_input);
     }
 
-    let output = shortcuts::expression_to_jq(output_input)?;
+    let output = shortcuts::output_expression_to_jq(output_input)?;
     if filter_input.is_empty() {
         return Ok(output);
     }
@@ -348,10 +348,17 @@ struct FilterState {
 }
 
 struct PreviewState {
-    lines: Vec<String>,
+    lines: Vec<PreviewLine>,
+    match_count: usize,
     limit: usize,
     field_scroll: usize,
     preview_scroll: u16,
+}
+
+#[derive(Clone)]
+struct PreviewLine {
+    text: String,
+    style: Style,
 }
 
 struct ExplorerPersistence {
@@ -419,6 +426,7 @@ impl ExploreSession {
             output_options,
             preview: PreviewState {
                 lines: Vec::new(),
+                match_count: 0,
                 limit: config.max_preview_results,
                 field_scroll: 0,
                 preview_scroll: 0,
@@ -476,18 +484,21 @@ impl ExploreSession {
             Ok(generated) => {
                 self.filter.generated = generated;
                 self.persist_last_filter();
-                match preview_values(
+                match preview_tui_values(
                     &self.data.values,
                     &self.filter.generated,
                     self.preview.limit,
-                    &output::OutputOptions::plain(),
+                    &self.output_options,
                 ) {
                     Ok(preview) => {
-                        self.preview.lines = preview;
+                        self.preview.lines = preview.lines;
+                        self.preview.match_count = preview.match_count;
+                        self.clamp_preview_scroll();
                         self.filter.error = None;
                     }
                     Err(e) => {
                         self.preview.lines.clear();
+                        self.preview.match_count = 0;
                         self.filter.error = Some(e);
                     }
                 }
@@ -495,6 +506,7 @@ impl ExploreSession {
             Err(e) => {
                 self.filter.generated.clear();
                 self.preview.lines.clear();
+                self.preview.match_count = 0;
                 self.filter.error = Some(e);
             }
         }
@@ -735,6 +747,7 @@ impl ExploreSession {
                 "off"
             }
         ));
+        self.refresh();
     }
 
     fn toggle_no_color(&mut self) {
@@ -747,6 +760,7 @@ impl ExploreSession {
                 "on"
             }
         ));
+        self.refresh();
     }
 
     fn clear_completion_state(&mut self) {
@@ -772,6 +786,51 @@ impl ExploreSession {
             self.preview.preview_scroll.saturating_add(delta as u16)
         };
         self.preview.preview_scroll = next.min(max);
+    }
+
+    fn clamp_preview_scroll(&mut self) {
+        let max = self.preview.lines.len().saturating_sub(1) as u16;
+        self.preview.preview_scroll = self.preview.preview_scroll.min(max);
+    }
+
+    fn status_line(&self) -> String {
+        let active = match self.active_input {
+            ActiveInput::Filter => "filter",
+            ActiveInput::Output => "output",
+        };
+        let pretty = if self.output_options.pretty {
+            "pretty:on"
+        } else {
+            "pretty:off"
+        };
+        let level = if self.output_options.color_level && !self.output_options.no_color {
+            "level-color:on"
+        } else {
+            "level-color:off"
+        };
+        let scroll = if self.preview.lines.is_empty() {
+            "scroll:0/0".to_owned()
+        } else {
+            format!(
+                "scroll:{}/{}",
+                self.preview.preview_scroll.saturating_add(1),
+                self.preview.lines.len()
+            )
+        };
+        let output = if self.output.input.trim().is_empty() {
+            "."
+        } else {
+            self.output.input.trim()
+        };
+        let mut status = format!(
+            "{} matches | editing:{active} | {pretty} | {level} | {scroll} | output:{output}",
+            self.preview.match_count
+        );
+        if let Some(message) = &self.message {
+            status.push_str(" | ");
+            status.push_str(message);
+        }
+        status
     }
 }
 
@@ -839,6 +898,74 @@ fn preview_values(
     Ok(lines)
 }
 
+struct TuiPreview {
+    lines: Vec<PreviewLine>,
+    match_count: usize,
+}
+
+fn preview_tui_values(
+    values: &[Val],
+    filter: &str,
+    limit: usize,
+    options: &output::OutputOptions,
+) -> Result<TuiPreview, String> {
+    let matcher = Matcher::compile(filter)?;
+    let mut lines = Vec::new();
+    let mut match_count = 0;
+    let display_options = output::OutputOptions {
+        pretty: options.pretty,
+        json_color: false,
+        color_level: false,
+        no_color: true,
+        color_level_field: options.color_level_field.clone(),
+    };
+
+    for value in values {
+        for result in matcher.apply(value.clone())? {
+            if !matcher::is_match(&result) {
+                continue;
+            }
+            match_count += 1;
+            let text = output::format_result(&result, value, &display_options)
+                .map_err(|e| e.to_string())?;
+            let style = preview_line_style(value, options);
+            for line in text.lines() {
+                lines.push(PreviewLine {
+                    text: line.to_owned(),
+                    style,
+                });
+            }
+            if text.is_empty() {
+                lines.push(PreviewLine {
+                    text: String::new(),
+                    style,
+                });
+            }
+            if match_count >= limit {
+                return Ok(TuiPreview { lines, match_count });
+            }
+        }
+    }
+    Ok(TuiPreview { lines, match_count })
+}
+
+fn preview_line_style(source: &Val, options: &output::OutputOptions) -> Style {
+    match color::color_code_by_level_without_env(
+        source,
+        options.color_level,
+        options.no_color,
+        options.color_level_field.as_deref(),
+    ) {
+        Some("\u{1b}[36m") => Style::default().fg(Color::Cyan),
+        Some("\u{1b}[34m") => Style::default().fg(Color::Blue),
+        Some("\u{1b}[33m") => Style::default().fg(Color::Yellow),
+        Some("\u{1b}[35m") => Style::default().fg(Color::Magenta),
+        Some("\u{1b}[31m") => Style::default().fg(Color::Red),
+        Some("\u{1b}[1;31m") => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        _ => Style::default(),
+    }
+}
+
 fn print_snapshot(session: &ExploreSession, out: &mut dyn Write) -> io::Result<()> {
     writeln!(out, "jgrep explore")?;
     writeln!(
@@ -897,8 +1024,14 @@ fn print_snapshot(session: &ExploreSession, out: &mut dyn Write) -> io::Result<(
         if preview.is_empty() {
             writeln!(out, "  no matches")?;
         } else {
-            for line in &preview {
-                writeln!(out, "  {line}")?;
+            for item in &preview {
+                if item.is_empty() {
+                    writeln!(out, "  ")?;
+                } else {
+                    for line in item.lines() {
+                        writeln!(out, "  {line}")?;
+                    }
+                }
             }
         }
     }
@@ -1077,7 +1210,7 @@ fn handle_key(
             session.toggle_active_input();
             None
         }
-        KeyCode::Char('b') if modifiers.contains(KeyModifiers::CONTROL) => {
+        KeyCode::Char('f') if modifiers.contains(KeyModifiers::CONTROL) => {
             session.toggle_pretty();
             None
         }
@@ -1122,11 +1255,19 @@ fn handle_key(
             None
         }
         KeyCode::Up => {
-            session.scroll_fields(-1);
+            if session.active_input == ActiveInput::Output {
+                session.scroll_preview(-1);
+            } else {
+                session.scroll_fields(-1);
+            }
             None
         }
         KeyCode::Down => {
-            session.scroll_fields(1);
+            if session.active_input == ActiveInput::Output {
+                session.scroll_preview(1);
+            } else {
+                session.scroll_fields(1);
+            }
             None
         }
         KeyCode::PageUp => {
@@ -1274,38 +1415,30 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
         body[0],
     );
 
-    let preview_text = if let Some(error) = &session.filter.error {
-        format!("error: {error}")
+    let preview_lines = if let Some(error) = &session.filter.error {
+        vec![Line::styled(
+            format!("error: {error}"),
+            Style::default().fg(Color::Red),
+        )]
     } else if session.preview.lines.is_empty() {
-        "no matches".to_owned()
+        vec![Line::from("no matches")]
     } else {
-        session.preview.lines.join("\n")
+        session
+            .preview
+            .lines
+            .iter()
+            .map(|line| Line::styled(line.text.clone(), line.style))
+            .collect::<Vec<_>>()
     };
     frame.render_widget(
-        Paragraph::new(preview_text)
+        Paragraph::new(preview_lines)
             .wrap(Wrap { trim: false })
             .scroll((session.preview.preview_scroll, 0))
             .block(Block::default().title("Preview").borders(Borders::ALL)),
         body[1],
     );
 
-    let status = session.message.clone().unwrap_or_else(|| {
-        let pretty = if session.output_options.pretty {
-            "pretty:on"
-        } else {
-            "pretty:off"
-        };
-        let level = if session.output_options.color_level && !session.output_options.no_color {
-            "level-color:on"
-        } else {
-            "level-color:off"
-        };
-        format!(
-            "{} matches | {pretty} | {level} | generated: {}",
-            session.preview.lines.len(),
-            session.filter.generated
-        )
-    });
+    let status = session.status_line();
     let stream_status = session.stream.as_ref().map(|stream| {
         let status = if stream.ended { "complete" } else { "live" };
         format!(
@@ -1316,11 +1449,11 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
     });
     let hint = if let Some(stream_status) = stream_status {
         format!(
-            "{status}\n{stream_status}\nCtrl-O input | Tab complete | Ctrl-B pretty | Ctrl-L level color | Ctrl-K color off/on | Ctrl-P/N history | Enter print | Ctrl-Y jq | Ctrl-S save | Esc quit"
+            "{status}\n{stream_status}\nCtrl-O input | Tab complete | Ctrl-F pretty | Ctrl-L level color | Ctrl-K color off/on | Ctrl-P/N history | Enter print | Ctrl-Y jq | Ctrl-S save | Esc quit"
         )
     } else {
         format!(
-            "{status}\nCtrl-O input | Tab complete | Ctrl-B pretty | Ctrl-L level color | Ctrl-K color off/on | Ctrl-P/N history | Enter print | Ctrl-Y jq | Ctrl-S save | Esc quit"
+            "{status}\nCtrl-O input | Tab complete | Ctrl-F pretty | Ctrl-L level color | Ctrl-K color off/on | Ctrl-P/N history | Enter print | Ctrl-Y jq | Ctrl-S save | Esc quit"
         )
     };
     let hint_style = if session.filter.error.is_some() {
@@ -1331,7 +1464,6 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
     frame.render_widget(
         Paragraph::new(hint)
             .style(hint_style)
-            .wrap(Wrap { trim: true })
             .block(Block::default().borders(Borders::ALL)),
         outer[2],
     );
@@ -1341,6 +1473,15 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
 mod tests {
     use super::*;
     use ratatui::backend::TestBackend;
+
+    fn preview_text(session: &ExploreSession) -> Vec<String> {
+        session
+            .preview
+            .lines
+            .iter()
+            .map(|line| line.text.clone())
+            .collect()
+    }
 
     #[test]
     fn preview_applies_shortcut_filter() {
@@ -1394,6 +1535,10 @@ mod tests {
             compose_explore_jq("status=active", "").unwrap(),
             "select(.status == \"active\") | ."
         );
+        assert_eq!(
+            compose_explore_jq("log.level=ERROR", "{message, level: .log.level}").unwrap(),
+            "select((if type == \"object\" and has(\"log.level\") then .[\"log.level\"] else .log.level end) == \"ERROR\") | {message, level: .log.level}"
+        );
     }
 
     #[test]
@@ -1429,7 +1574,7 @@ mod tests {
             session.filter.generated,
             "select(.status == \"active\") | .name"
         );
-        assert_eq!(session.preview.lines, ["Alice"]);
+        assert_eq!(preview_text(&session), ["Alice"]);
     }
 
     #[test]
@@ -1448,13 +1593,77 @@ mod tests {
             output::OutputOptions::plain(),
         );
 
-        handle_key(&mut session, KeyCode::Char('b'), KeyModifiers::CONTROL);
+        handle_key(&mut session, KeyCode::Char('f'), KeyModifiers::CONTROL);
         handle_key(&mut session, KeyCode::Char('l'), KeyModifiers::CONTROL);
         handle_key(&mut session, KeyCode::Char('k'), KeyModifiers::CONTROL);
 
         assert!(session.output_options.pretty);
         assert!(session.output_options.color_level);
         assert!(session.output_options.no_color);
+    }
+
+    #[test]
+    fn output_options_apply_to_live_preview() {
+        let values = parse_values(
+            InputKind::Json,
+            br#"{"log":{"level":"ERROR"},"message":"boom","details":{"code":42}}"#,
+            false,
+        )
+        .unwrap();
+        let config = ExploreConfig {
+            max_input_bytes: 1024 * 1024,
+            max_schema_documents: 10,
+            max_preview_results: 10,
+            max_schema_depth: 4,
+        };
+        let mut session = ExploreSession::new(
+            values,
+            String::new(),
+            "{message,details}".to_owned(),
+            config,
+            output::OutputOptions::plain(),
+        );
+
+        handle_key(&mut session, KeyCode::Char('f'), KeyModifiers::CONTROL);
+        handle_key(&mut session, KeyCode::Char('l'), KeyModifiers::CONTROL);
+
+        let text = preview_text(&session);
+        assert!(text.iter().any(|line| line == "{"));
+        assert!(text.iter().any(|line| line.contains("\"message\"")));
+        assert!(session
+            .preview
+            .lines
+            .iter()
+            .any(|line| line.style.fg == Some(Color::Red)));
+    }
+
+    #[test]
+    fn output_mode_arrows_scroll_preview() {
+        let values = parse_values(
+            InputKind::Json,
+            br#"{"items":[{"name":"a"},{"name":"b"},{"name":"c"}]}"#,
+            false,
+        )
+        .unwrap();
+        let config = ExploreConfig {
+            max_input_bytes: 1024 * 1024,
+            max_schema_documents: 10,
+            max_preview_results: 10,
+            max_schema_depth: 4,
+        };
+        let mut session = ExploreSession::new(
+            values,
+            String::new(),
+            ".".to_owned(),
+            config,
+            output::OutputOptions::plain(),
+        );
+        handle_key(&mut session, KeyCode::Char('f'), KeyModifiers::CONTROL);
+        handle_key(&mut session, KeyCode::Char('o'), KeyModifiers::CONTROL);
+
+        handle_key(&mut session, KeyCode::Down, KeyModifiers::NONE);
+
+        assert_eq!(session.preview.preview_scroll, 1);
     }
 
     #[test]
@@ -1556,14 +1765,14 @@ mod tests {
 
         assert_eq!(session.filter.text.input, "status=active");
         assert_eq!(
-            session.preview.lines,
+            preview_text(&session),
             [r#"{"name":"Alice","status":"active"}"#]
         );
 
         handle_key(&mut session, KeyCode::Char('p'), KeyModifiers::CONTROL);
 
         assert_eq!(session.filter.text.input, "name");
-        assert_eq!(session.preview.lines, ["Alice"]);
+        assert_eq!(preview_text(&session), ["Alice"]);
     }
 
     #[test]

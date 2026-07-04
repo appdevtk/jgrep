@@ -25,6 +25,7 @@ impl OutputOptions {
         }
     }
 
+    #[cfg(test)]
     pub fn plain() -> Self {
         Self {
             pretty: false,

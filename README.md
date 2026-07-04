@@ -47,7 +47,7 @@ cargo build --release -p jgrep
 ### jgrep
 
 ```
-Usage: jgrep [-rclsnhV] [-f=FILE] [-p FIELD] [-w TEST] [--pretty] [-C|--color-level] [--color-level-field FIELD] [--no-color] [FILTER] [FILE...]
+Usage: jgrep [-rclsnhV] [-f=FILE] [-p EXPR] [-w TEST] [--pretty] [-C|--color-level] [--color-level-field FIELD] [--no-color] [FILTER] [FILE...]
 
   FILTER   jq filter expression (e.g. '.name', 'select(.age > 18)', '.items[]').
            Defaults to '.' when omitted or when the first positional argument is an existing path.
@@ -182,11 +182,20 @@ The same split is available at startup. This filters records first, then prints 
 jgrep explore -w log.level=ERROR -p message -C logs.ndjson
 ```
 
+Use jq object or array expressions when you want multiple fields in the output:
+
+```sh
+jgrep explore -w log.level=ERROR -p '{time: .timestamp, level: .log.level, message, trace_id}' logs.ndjson
+jgrep explore -w log.level=ERROR -p '[.timestamp, .log.level, .message]' logs.ndjson
+```
+
 Useful TUI toggles:
 - `Ctrl-O` - switch between Filter and Output
-- `Ctrl-B` - toggle pretty JSON output
+- `Ctrl-F` - toggle pretty JSON output
 - `Ctrl-L` - toggle log-level color for printed output
 - `Ctrl-K` - toggle colors off/on
+- `Up`/`Down` - scroll fields while editing Filter, scroll preview while editing Output
+- `PageUp`/`PageDown` - scroll preview
 - `Enter` - print current results
 - `Ctrl-Y` - print the generated jq expression
 

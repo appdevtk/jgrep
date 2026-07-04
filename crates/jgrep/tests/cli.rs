@@ -498,6 +498,36 @@ fn explore_can_combine_filter_output_and_color_options() {
 }
 
 #[test]
+fn explore_output_accepts_multi_field_jq_expression() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("logs.json");
+    fs::write(
+        &file,
+        "{\"timestamp\":\"t1\",\"log\":{\"level\":\"ERROR\"},\"message\":\"boom\",\"trace_id\":\"trc-1\"}\n",
+    )
+    .unwrap();
+
+    jgrep()
+        .args([
+            "explore",
+            "--print",
+            "--pretty",
+            "-w",
+            "log.level=ERROR",
+            "-p",
+            "{time: .timestamp, level: .log.level, message, trace_id}",
+            file.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "output: {time: .timestamp, level: .log.level, message, trace_id}",
+        ))
+        .stdout(predicate::str::contains("  \"time\": \"t1\""))
+        .stdout(predicate::str::contains("  \"trace_id\": \"trc-1\""));
+}
+
+#[test]
 fn explore_reads_yaml_from_stdin() {
     jgrep()
         .args(["explore", "--print", "--filter", "name"])

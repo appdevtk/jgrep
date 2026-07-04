@@ -16,18 +16,21 @@ Sleep 2s
 
 Type "JGREP_DEMO_LOOPS=5 JGREP_DEMO_DELAY=0.24 demos/scripts/k8s-log-stream.sh | ./target/debug/jgrep explore"
 Enter
-Wait+Screen /streaming stdin/
+Wait+Screen /stream/
 Sleep 1s
 
 Type "log.level=ERROR"
 Wait+Screen /declined/
 Wait+Screen /fallback/
-Wait+Screen /streaming stdin/
+Wait+Screen /stream/
+Ctrl+F
+Ctrl+L
 Ctrl+O
 Sleep 500ms
-Type "message"
+Type "{level:.log.level,message,trace_id}"
 Wait+Screen /payment declined/
 Wait+Screen /fallback charge failed/
+Wait+Screen /trace_id/
 Sleep 3s
 
 Escape

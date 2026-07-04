@@ -23,6 +23,23 @@ pub fn expression_to_jq(expression: &str) -> Result<String, String> {
     }
 }
 
+pub fn output_expression_to_jq(expression: &str) -> Result<String, String> {
+    let expression = expression.trim();
+    if expression.is_empty() {
+        return Ok(".".to_owned());
+    }
+
+    if expression.starts_with('.')
+        || expression.starts_with("select(")
+        || expression.starts_with('{')
+        || expression.starts_with('[')
+    {
+        return Ok(expression.to_owned());
+    }
+
+    path_filter(expression)
+}
+
 pub fn apply_where_filters(base_filter: String, filters: &[String]) -> Result<String, String> {
     if filters.is_empty() {
         return Ok(base_filter);
@@ -140,6 +157,19 @@ mod tests {
             "(if type == \"object\" and has(\"log.level\") then .[\"log.level\"] else .log.level end)"
         );
         assert_eq!(path_filter("log-level").unwrap(), ".[\"log-level\"]");
+    }
+
+    #[test]
+    fn keeps_raw_output_expressions() {
+        assert_eq!(
+            output_expression_to_jq("{message, level: .log.level}").unwrap(),
+            "{message, level: .log.level}"
+        );
+        assert_eq!(
+            output_expression_to_jq("[.timestamp, .message]").unwrap(),
+            "[.timestamp, .message]"
+        );
+        assert_eq!(output_expression_to_jq("message").unwrap(), ".message");
     }
 
     #[test]

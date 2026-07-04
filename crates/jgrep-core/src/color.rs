@@ -36,12 +36,40 @@ pub fn colorize_by_level(
     no_color: bool,
     color_level_field: Option<&str>,
 ) -> Option<String> {
-    if !color_level || no_color || std::env::var_os("NO_COLOR").is_some() {
+    let color = color_code_by_level(source, color_level, no_color, color_level_field)?;
+    Some(format!("{color}{text}{RESET}"))
+}
+
+pub fn color_code_by_level(
+    source: &Val,
+    color_level: bool,
+    no_color: bool,
+    color_level_field: Option<&str>,
+) -> Option<&'static str> {
+    color_code_by_level_inner(source, color_level, no_color, color_level_field, true)
+}
+
+pub fn color_code_by_level_without_env(
+    source: &Val,
+    color_level: bool,
+    no_color: bool,
+    color_level_field: Option<&str>,
+) -> Option<&'static str> {
+    color_code_by_level_inner(source, color_level, no_color, color_level_field, false)
+}
+
+fn color_code_by_level_inner(
+    source: &Val,
+    color_level: bool,
+    no_color: bool,
+    color_level_field: Option<&str>,
+    honor_no_color_env: bool,
+) -> Option<&'static str> {
+    if !color_level || no_color || (honor_no_color_env && std::env::var_os("NO_COLOR").is_some()) {
         return None;
     }
     let level = level_value(source, color_level_field)?;
-    let color = color_for_level(&level)?;
-    Some(format!("{color}{text}{RESET}"))
+    color_for_level(&level)
 }
 
 fn level_value(source: &Val, color_level_field: Option<&str>) -> Option<String> {
