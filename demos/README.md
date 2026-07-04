@@ -12,6 +12,8 @@ vhs demos/tapes/quickstart.tape
 vhs demos/tapes/yaml-and-recursive.tape
 vhs demos/tapes/shortcuts-and-slurp.tape
 vhs demos/tapes/explorer-snapshot.tape
+vhs demos/tapes/streaming-highlight.tape
+vhs demos/tapes/explore-tui-streaming.tape
 ```
 
 The generated GIFs are written to `demos/out/`.
@@ -37,4 +39,10 @@ jgrep -r 'select(.kind == "Deployment" and .spec.replicas > 2) | .metadata.name'
 jgrep -C -w log.level=ERROR demos/fixtures/logs.ndjson
 jgrep explore --print --filter status=active demos/fixtures/users.ndjson
 jgrep completion bash | sed -n '1,12p'
+
+JGREP_DEMO_DELAY=0.35 demos/scripts/k8s-log-stream.sh |
+  jgrep -C -f demos/fixtures/k8s-log-line.jq
+
+JGREP_DEMO_DELAY=0.45 demos/scripts/k8s-log-stream.sh |
+  jgrep explore
 ```
