@@ -1,0 +1,3 @@
+{"name":"Alice","age":31,"status":"active","role":"admin","address":{"city":"Berlin"}}
+{"name":"Bob","age":17,"status":"pending","role":"viewer","address":{"city":"Hamburg"}}
+{"name":"Carla","age":44,"status":"active","role":"operator","address":{"city":"Cologne"}}

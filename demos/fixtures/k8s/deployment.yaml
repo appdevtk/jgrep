@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: app
+          image: registry.example/checkout:1.7.4
+        - name: sidecar
+          image: registry.example/log-router:0.9.1

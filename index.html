@@ -246,6 +246,13 @@
       gap: 16px;
     }
 
+    .demo-list {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
     .example {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -262,6 +269,32 @@
 
     .example pre {
       background: var(--code);
+    }
+
+    .demo-card {
+      display: flex;
+      min-height: 178px;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .demo-card h3 {
+      margin: 0 0 6px;
+      font-size: 1rem;
+    }
+
+    .demo-card p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .demo-card a {
+      font-weight: 680;
     }
 
     .install {
@@ -288,6 +321,7 @@
       .hero,
       .install,
       .examples,
+      .demo-list,
       .grid {
         grid-template-columns: 1fr;
       }
@@ -311,6 +345,7 @@
       <div class="nav-links">
         <a href="#features">Features</a>
         <a href="#examples">Examples</a>
+        <a href="#demos">Demos</a>
         <a href="#install">Install</a>
         <a href="https://github.com/subnix-work/jgrep">GitHub</a>
       </div>
@@ -393,6 +428,51 @@ jgrep explore --filter status=active logs.ndjson</code></pre>
             <h3>Structured logs</h3>
             <pre><code>jgrep -C -w log.level=ERROR logs.ndjson
 jgrep --color-level --color-level-field app.level app.ndjson</code></pre>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="demos">
+      <div class="shell">
+        <h2>VHS demos</h2>
+        <p>Terminal demos are checked in as VHS tape files so recordings stay reproducible. Render them locally with <code>vhs demos/tapes/&lt;name&gt;.tape</code>; GIF output goes to <code>demos/out/</code>.</p>
+        <div class="terminal" aria-label="Render jgrep VHS demos">
+          <div class="terminal-title"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <pre><code>mkdir -p demos/out
+vhs demos/tapes/quickstart.tape
+vhs demos/tapes/yaml-and-recursive.tape
+vhs demos/tapes/shortcuts-and-slurp.tape
+vhs demos/tapes/explorer-snapshot.tape</code></pre>
+        </div>
+        <div class="demo-list">
+          <article class="demo-card">
+            <div>
+              <h3>Quickstart</h3>
+              <p>Field extraction and jq filtering over NDJSON.</p>
+            </div>
+            <a href="demos/tapes/quickstart.tape">View tape</a>
+          </article>
+          <article class="demo-card">
+            <div>
+              <h3>YAML and recursive search</h3>
+              <p>Kubernetes manifests, YAML paths, and directory search.</p>
+            </div>
+            <a href="demos/tapes/yaml-and-recursive.tape">View tape</a>
+          </article>
+          <article class="demo-card">
+            <div>
+              <h3>Shortcuts and slurp</h3>
+              <p><code>-w</code>, <code>-p</code>, filter files, and JSON array output.</p>
+            </div>
+            <a href="demos/tapes/shortcuts-and-slurp.tape">View tape</a>
+          </article>
+          <article class="demo-card">
+            <div>
+              <h3>Explorer snapshot</h3>
+              <p>Deterministic schema preview plus shell completion output.</p>
+            </div>
+            <a href="demos/tapes/explorer-snapshot.tape">View tape</a>
           </article>
         </div>
       </div>

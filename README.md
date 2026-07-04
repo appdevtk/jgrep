@@ -134,6 +134,47 @@ jgrep -r 'select(.kind == "Deployment" and .spec.replicas > 2)' k8s/
 kubectl get deploy checkout -o yaml | jgrep '.spec.template.spec.containers[].image'
 ```
 
+## Demo commands
+
+The repository includes fixtures under `demos/fixtures/` so the main features can be tested without external services:
+
+```bash
+cargo build -q -p jgrep
+alias jgrep=./target/debug/jgrep
+
+# jq field extraction and filtering
+jgrep '.name' demos/fixtures/users.ndjson
+jgrep 'select(.age >= 18) | .name' demos/fixtures/users.ndjson
+
+# Shortcut filters without writing full jq
+jgrep -w status=active -p name demos/fixtures/users.ndjson
+jgrep -f demos/fixtures/filter.jq demos/fixtures/users.ndjson
+
+# YAML and recursive mixed-format search
+jgrep '.spec.template.spec.containers[].image' demos/fixtures/k8s/deployment.yaml
+jgrep -r 'select(.kind == "Deployment" and .spec.replicas > 2) | .metadata.name' demos/fixtures/k8s
+
+# Slurp, color-level logs, explorer snapshot, completion
+jgrep -s '.role' demos/fixtures/users.ndjson
+jgrep -C -w log.level=ERROR demos/fixtures/logs.ndjson
+jgrep explore --print --filter status=active demos/fixtures/users.ndjson
+jgrep completion bash | sed -n '1,12p'
+```
+
+### VHS terminal demos
+
+The same scenarios are checked in as [VHS](https://terminaltrove.com/vhs/) tapes:
+
+```bash
+mkdir -p demos/out
+vhs demos/tapes/quickstart.tape
+vhs demos/tapes/yaml-and-recursive.tape
+vhs demos/tapes/shortcuts-and-slurp.tape
+vhs demos/tapes/explorer-snapshot.tape
+```
+
+Generated GIFs are written to `demos/out/`.
+
 ### Shell completion
 
 ```bash
