@@ -16,6 +16,12 @@ vhs demos/tapes/explorer-snapshot.tape
 
 The generated GIFs are written to `demos/out/`.
 
+In headless containers where Chromium cannot use its sandbox, prefix the render command with `VHS_NO_SANDBOX=1`:
+
+```bash
+VHS_NO_SANDBOX=1 vhs demos/tapes/quickstart.tape
+```
+
 ## Try the same commands manually
 
 ```bash

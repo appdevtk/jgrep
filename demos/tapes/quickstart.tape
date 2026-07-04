@@ -9,16 +9,16 @@ Set FontSize 24
 Set TypingSpeed 35ms
 Set Theme "Catppuccin Mocha"
 
-Type "cargo build -q -p jgrep && alias jgrep=./target/debug/jgrep"
+Type "cargo build -q -p jgrep"
 Enter
 Sleep 2s
 
-Type "jgrep '.name' demos/fixtures/users.ndjson"
+Type "./target/debug/jgrep -p name demos/fixtures/users.ndjson"
 Enter
-Wait+Line /Alice/
+Wait+Screen /Alice/
 Sleep 1s
 
-Type "jgrep 'select(.age >= 18) | .name' demos/fixtures/users.ndjson"
+Type "./target/debug/jgrep -f demos/fixtures/adults.jq demos/fixtures/users.ndjson"
 Enter
-Wait+Line /Carla/
+Wait+Screen /Carla/
 Sleep 2s

@@ -9,21 +9,21 @@ Set FontSize 24
 Set TypingSpeed 35ms
 Set Theme "Catppuccin Mocha"
 
-Type "cargo build -q -p jgrep && alias jgrep=./target/debug/jgrep"
+Type "cargo build -q -p jgrep"
 Enter
 Sleep 2s
 
-Type "jgrep -w status=active -p name demos/fixtures/users.ndjson"
+Type "./target/debug/jgrep -w status=active -p name demos/fixtures/users.ndjson"
 Enter
-Wait+Line /Carla/
+Wait+Screen /Carla/
 Sleep 1s
 
-Type "jgrep -f demos/fixtures/filter.jq demos/fixtures/users.ndjson"
+Type "./target/debug/jgrep -f demos/fixtures/filter.jq demos/fixtures/users.ndjson"
 Enter
-Wait+Line /Berlin/
+Wait+Screen /Berlin/
 Sleep 1s
 
-Type "jgrep -s '.role' demos/fixtures/users.ndjson"
+Type "./target/debug/jgrep -s -p role demos/fixtures/users.ndjson"
 Enter
-Wait+Line /operator/
+Wait+Screen /operator/
 Sleep 2s

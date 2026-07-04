@@ -248,8 +248,8 @@
 
     .demo-list {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 14px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
       margin-top: 18px;
     }
 
@@ -295,6 +295,16 @@
 
     .demo-card a {
       font-weight: 680;
+    }
+
+    .demo-card img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 5 / 3;
+      object-fit: cover;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--code);
     }
 
     .install {
@@ -436,17 +446,21 @@ jgrep --color-level --color-level-field app.level app.ndjson</code></pre>
     <section id="demos">
       <div class="shell">
         <h2>VHS demos</h2>
-        <p>Terminal demos are checked in as VHS tape files so recordings stay reproducible. Render them locally with <code>vhs demos/tapes/&lt;name&gt;.tape</code>; GIF output goes to <code>demos/out/</code>.</p>
+        <p>Terminal demos are checked in as VHS tape files so recordings stay reproducible. The rendered GIFs below are generated from the same sources.</p>
         <div class="terminal" aria-label="Render jgrep VHS demos">
           <div class="terminal-title"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
           <pre><code>mkdir -p demos/out
 vhs demos/tapes/quickstart.tape
 vhs demos/tapes/yaml-and-recursive.tape
 vhs demos/tapes/shortcuts-and-slurp.tape
-vhs demos/tapes/explorer-snapshot.tape</code></pre>
+vhs demos/tapes/explorer-snapshot.tape
+
+# In containers without Chromium sandbox support:
+VHS_NO_SANDBOX=1 vhs demos/tapes/quickstart.tape</code></pre>
         </div>
         <div class="demo-list">
           <article class="demo-card">
+            <img src="demos/out/quickstart.gif" alt="jgrep quickstart demo showing field extraction and jq filtering over NDJSON" loading="lazy">
             <div>
               <h3>Quickstart</h3>
               <p>Field extraction and jq filtering over NDJSON.</p>
@@ -454,6 +468,7 @@ vhs demos/tapes/explorer-snapshot.tape</code></pre>
             <a href="demos/tapes/quickstart.tape">View tape</a>
           </article>
           <article class="demo-card">
+            <img src="demos/out/yaml-and-recursive.gif" alt="jgrep demo querying Kubernetes YAML and searching directories recursively" loading="lazy">
             <div>
               <h3>YAML and recursive search</h3>
               <p>Kubernetes manifests, YAML paths, and directory search.</p>
@@ -461,6 +476,7 @@ vhs demos/tapes/explorer-snapshot.tape</code></pre>
             <a href="demos/tapes/yaml-and-recursive.tape">View tape</a>
           </article>
           <article class="demo-card">
+            <img src="demos/out/shortcuts-and-slurp.gif" alt="jgrep demo using shortcut filters, filter files, and slurp output" loading="lazy">
             <div>
               <h3>Shortcuts and slurp</h3>
               <p><code>-w</code>, <code>-p</code>, filter files, and JSON array output.</p>
@@ -468,6 +484,7 @@ vhs demos/tapes/explorer-snapshot.tape</code></pre>
             <a href="demos/tapes/shortcuts-and-slurp.tape">View tape</a>
           </article>
           <article class="demo-card">
+            <img src="demos/out/explorer-snapshot.gif" alt="jgrep explore snapshot demo with schema preview and shell completion output" loading="lazy">
             <div>
               <h3>Explorer snapshot</h3>
               <p>Deterministic schema preview plus shell completion output.</p>
