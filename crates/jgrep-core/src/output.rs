@@ -5,6 +5,37 @@ use jaq_json::Val;
 use crate::cli::Cli;
 use crate::color;
 
+#[derive(Debug, Clone)]
+pub struct OutputOptions {
+    pub pretty: bool,
+    pub json_color: bool,
+    pub color_level: bool,
+    pub no_color: bool,
+    pub color_level_field: Option<String>,
+}
+
+impl OutputOptions {
+    pub fn from_cli(cli: &Cli) -> Self {
+        Self {
+            pretty: cli.pretty,
+            json_color: cli.use_json_color(),
+            color_level: cli.color_level,
+            no_color: cli.no_color,
+            color_level_field: cli.color_level_field.clone(),
+        }
+    }
+
+    pub fn plain() -> Self {
+        Self {
+            pretty: false,
+            json_color: false,
+            color_level: false,
+            no_color: true,
+            color_level_field: None,
+        }
+    }
+}
+
 pub fn write_result(
     out: &mut dyn Write,
     result: &Val,
@@ -13,15 +44,19 @@ pub fn write_result(
     source: &Val,
     cli: &Cli,
 ) -> io::Result<()> {
-    let mut output = format_value(result, cli.pretty)?;
-    if cli.use_json_color() && !matches!(result, Val::TStr(_)) {
-        output = color::colorize_json(&output);
-    }
+    let options = OutputOptions::from_cli(cli);
+    let output = format_display_value(result, &options)?;
 
     if show_filename {
         if let Some(filename) = filename {
             let line = format!("{filename}:{output}");
-            if let Some(colored) = color::colorize_by_level(&line, source, cli) {
+            if let Some(colored) = color::colorize_by_level(
+                &line,
+                source,
+                options.color_level,
+                options.no_color,
+                options.color_level_field.as_deref(),
+            ) {
                 writeln!(out, "{colored}")?;
             } else {
                 writeln!(out, "{line}")?;
@@ -29,12 +64,41 @@ pub fn write_result(
         } else {
             writeln!(out, "{output}")?;
         }
-    } else if let Some(colored) = color::colorize_by_level(&output, source, cli) {
-        writeln!(out, "{colored}")?;
     } else {
-        writeln!(out, "{output}")?;
+        writeln!(
+            out,
+            "{}",
+            colorize_level_if_needed(&output, source, &options)
+        )?;
     }
     Ok(())
+}
+
+pub fn format_result(result: &Val, source: &Val, options: &OutputOptions) -> io::Result<String> {
+    let output = format_display_value(result, options)?;
+    Ok(colorize_level_if_needed(&output, source, options))
+}
+
+fn format_display_value(result: &Val, options: &OutputOptions) -> io::Result<String> {
+    let mut output = format_value(result, options.pretty)?;
+    if options.json_color && !matches!(result, Val::TStr(_)) {
+        output = color::colorize_json(&output);
+    }
+    Ok(output)
+}
+
+fn colorize_level_if_needed(output: &str, source: &Val, options: &OutputOptions) -> String {
+    if let Some(colored) = color::colorize_by_level(
+        output,
+        source,
+        options.color_level,
+        options.no_color,
+        options.color_level_field.as_deref(),
+    ) {
+        colored
+    } else {
+        output.to_owned()
+    }
 }
 
 pub fn write_slurp(

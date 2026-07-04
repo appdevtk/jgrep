@@ -23,6 +23,11 @@ Type "log.level=ERROR"
 Wait+Screen /declined/
 Wait+Screen /fallback/
 Wait+Screen /streaming stdin/
+Ctrl+O
+Sleep 500ms
+Type "message"
+Wait+Screen /payment declined/
+Wait+Screen /fallback charge failed/
 Sleep 3s
 
 Escape

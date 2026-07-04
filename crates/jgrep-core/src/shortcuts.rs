@@ -28,15 +28,19 @@ pub fn apply_where_filters(base_filter: String, filters: &[String]) -> Result<St
         return Ok(base_filter);
     }
 
+    Ok(format!(
+        "{} | {base_filter}",
+        where_filters_to_select(filters)?
+    ))
+}
+
+pub fn where_filters_to_select(filters: &[String]) -> Result<String, String> {
     let mut conditions = Vec::with_capacity(filters.len());
     for filter in filters {
         conditions.push(where_condition(filter)?);
     }
 
-    Ok(format!(
-        "select({}) | {base_filter}",
-        conditions.join(" and ")
-    ))
+    Ok(format!("select({})", conditions.join(" and ")))
 }
 
 fn contains_condition_operator(input: &str) -> bool {

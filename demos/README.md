@@ -46,3 +46,5 @@ JGREP_DEMO_DELAY=0.35 demos/scripts/k8s-log-stream.sh |
 JGREP_DEMO_DELAY=0.45 demos/scripts/k8s-log-stream.sh |
   jgrep explore
 ```
+
+In the live TUI demo, type `log.level=ERROR`, press `Ctrl-O`, then type `message` to switch from filtering records to choosing the printed output.

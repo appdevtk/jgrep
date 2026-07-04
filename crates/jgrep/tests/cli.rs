@@ -467,6 +467,37 @@ fn explore_prints_schema_and_preview_for_file() {
 }
 
 #[test]
+fn explore_can_combine_filter_output_and_color_options() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("logs.json");
+    fs::write(
+        &file,
+        "{\"log\":{\"level\":\"INFO\"},\"message\":\"ok\"}\n{\"log\":{\"level\":\"ERROR\"},\"message\":\"boom\"}\n",
+    )
+    .unwrap();
+
+    jgrep()
+        .env_remove("NO_COLOR")
+        .args([
+            "explore",
+            "--print",
+            "-w",
+            "log.level=ERROR",
+            "-p",
+            "message",
+            "-C",
+            file.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("output: message"))
+        .stdout(predicate::str::contains("generated jq: select("))
+        .stdout(predicate::str::contains("preview:\n  \u{1b}[31mboom"))
+        .stdout(predicate::str::contains("\u{1b}[31m"))
+        .stdout(predicate::str::contains("preview:\n  ok").not());
+}
+
+#[test]
 fn explore_reads_yaml_from_stdin() {
     jgrep()
         .args(["explore", "--print", "--filter", "name"])

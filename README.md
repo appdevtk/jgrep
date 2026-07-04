@@ -169,6 +169,27 @@ JGREP_DEMO_DELAY=0.45 demos/scripts/k8s-log-stream.sh |
   jgrep explore
 ```
 
+Inside the TUI, `Filter` selects records and `Output` controls what each match prints. Use `Ctrl-O` to switch between them:
+
+```text
+Filter: log.level=ERROR
+Output: message
+```
+
+The same split is available at startup. This filters records first, then prints only the selected output expression:
+
+```sh
+jgrep explore -w log.level=ERROR -p message -C logs.ndjson
+```
+
+Useful TUI toggles:
+- `Ctrl-O` - switch between Filter and Output
+- `Ctrl-B` - toggle pretty JSON output
+- `Ctrl-L` - toggle log-level color for printed output
+- `Ctrl-K` - toggle colors off/on
+- `Enter` - print current results
+- `Ctrl-Y` - print the generated jq expression
+
 ### VHS terminal demos
 
 The same scenarios are checked in as [VHS](https://terminaltrove.com/vhs/) tapes:

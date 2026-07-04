@@ -128,6 +128,49 @@ pub struct ExploreArgs {
     pub filter: Option<String>,
 
     #[arg(
+        long = "pretty",
+        help = "Pretty-print JSON output printed from explore"
+    )]
+    pub pretty: bool,
+
+    #[arg(
+        short = 'p',
+        long = "path",
+        value_name = "EXPR",
+        help = "Set the explore Output expression, e.g. -p message or -p .message"
+    )]
+    pub path_filter: Option<String>,
+
+    #[arg(
+        short = 'w',
+        long = "where",
+        value_name = "TEST",
+        action = ArgAction::Append,
+        help = "Filter with a simple condition, e.g. -w log.level=ERROR"
+    )]
+    pub where_filters: Vec<String>,
+
+    #[arg(
+        long = "no-color",
+        help = "Disable colored output printed from explore"
+    )]
+    pub no_color: bool,
+
+    #[arg(
+        short = 'C',
+        long = "color-level",
+        help = "Color printed output by log level"
+    )]
+    pub color_level: bool,
+
+    #[arg(
+        long = "color-level-field",
+        value_name = "FIELD",
+        help = "Field used by --color-level"
+    )]
+    pub color_level_field: Option<String>,
+
+    #[arg(
         long = "print",
         help = "Print a deterministic schema and preview snapshot instead of opening the TUI"
     )]
@@ -204,9 +247,5 @@ impl Cli {
             return false;
         }
         std::io::IsTerminal::is_terminal(&std::io::stdout())
-    }
-
-    pub fn use_level_color(&self) -> bool {
-        self.color_level && !self.no_color && std::env::var_os("NO_COLOR").is_none()
     }
 }

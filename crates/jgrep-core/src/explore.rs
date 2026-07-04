@@ -26,6 +26,9 @@ use crate::{output, shortcuts, NAME};
 pub fn run(args: ExploreArgs) -> i32 {
     let mut err = io::BufWriter::new(io::stderr());
     let config = ExploreConfig::from_args(&args);
+    let filter = initial_filter_input(&args);
+    let output_input = args.path_filter.clone().unwrap_or_default();
+    let output_options = output_options_from_args(&args);
 
     if args.input.is_none()
         && !args.print
@@ -36,7 +39,7 @@ pub fn run(args: ExploreArgs) -> i32 {
             Ok(StdinTuiInput::Streaming(first_line)) => {
                 let stream = spawn_json_line_stream(first_line, config.max_input_bytes);
                 let mut session =
-                    ExploreSession::new_streaming(args.filter.unwrap_or_default(), config);
+                    ExploreSession::new_streaming(filter, output_input, config, output_options);
                 return finish_tui(
                     run_tui_streaming(&mut session, &stream),
                     &mut session,
@@ -55,7 +58,7 @@ pub fn run(args: ExploreArgs) -> i32 {
                     }
                 };
                 let mut session =
-                    ExploreSession::new(values, args.filter.unwrap_or_default(), config);
+                    ExploreSession::new(values, filter, output_input, config, output_options);
                 return finish_tui(run_tui(&mut session), &mut session, &mut err);
             }
             Err(e) => {
@@ -75,7 +78,7 @@ pub fn run(args: ExploreArgs) -> i32 {
         }
     };
 
-    let mut session = ExploreSession::new(values, args.filter.unwrap_or_default(), config);
+    let mut session = ExploreSession::new(values, filter, output_input, config, output_options);
     if args.print || !io::stdout().is_terminal() {
         let mut out = io::BufWriter::new(io::stdout());
         let has_error = session.filter.error.is_some();
@@ -86,6 +89,27 @@ pub fn run(args: ExploreArgs) -> i32 {
     }
 
     finish_tui(run_tui(&mut session), &mut session, &mut err)
+}
+
+fn initial_filter_input(args: &ExploreArgs) -> String {
+    if let Some(filter) = &args.filter {
+        return filter.clone();
+    }
+    if args.where_filters.is_empty() {
+        String::new()
+    } else {
+        shortcuts::where_filters_to_select(&args.where_filters).unwrap_or_default()
+    }
+}
+
+fn output_options_from_args(args: &ExploreArgs) -> output::OutputOptions {
+    output::OutputOptions {
+        pretty: args.pretty,
+        json_color: false,
+        color_level: args.color_level,
+        no_color: args.no_color,
+        color_level_field: args.color_level_field.clone(),
+    }
 }
 
 fn finish_tui(
@@ -282,14 +306,38 @@ fn collect_values(values: Vec<Result<Val, String>>) -> Result<Vec<Val>, String> 
     values.into_iter().collect::<Result<Vec<_>, _>>()
 }
 
+fn compose_explore_jq(filter_input: &str, output_input: &str) -> Result<String, String> {
+    let filter_input = filter_input.trim();
+    let output_input = output_input.trim();
+
+    if output_input.is_empty() {
+        return shortcuts::expression_to_jq(filter_input);
+    }
+
+    let output = shortcuts::expression_to_jq(output_input)?;
+    if filter_input.is_empty() {
+        return Ok(output);
+    }
+
+    if filter_input.starts_with("select(") || filter_input.starts_with('.') {
+        Ok(format!("{filter_input} | {output}"))
+    } else {
+        shortcuts::apply_where_filters(output, &[filter_input.to_owned()])
+    }
+}
+
 struct ExplorerData {
     values: Vec<Val>,
     fields: Vec<FieldSummary>,
 }
 
-struct FilterState {
+struct TextState {
     input: String,
     cursor: usize,
+}
+
+struct FilterState {
+    text: TextState,
     generated: String,
     error: Option<String>,
     history: Vec<String>,
@@ -313,11 +361,20 @@ struct ExplorerPersistence {
 struct ExploreSession {
     data: ExplorerData,
     filter: FilterState,
+    output: TextState,
+    active_input: ActiveInput,
+    output_options: output::OutputOptions,
     preview: PreviewState,
     persistence: ExplorerPersistence,
     config: ExploreConfig,
     stream: Option<StreamState>,
     message: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActiveInput {
+    Filter,
+    Output,
 }
 
 struct StreamState {
@@ -326,7 +383,13 @@ struct StreamState {
 }
 
 impl ExploreSession {
-    fn new(values: Vec<Val>, filter: String, config: ExploreConfig) -> Self {
+    fn new(
+        values: Vec<Val>,
+        filter: String,
+        output_input: String,
+        config: ExploreConfig,
+        output_options: output::OutputOptions,
+    ) -> Self {
         let fields = schema::infer_schema(
             &values,
             config.max_schema_documents,
@@ -336,8 +399,10 @@ impl ExploreSession {
         let mut session = Self {
             data: ExplorerData { values, fields },
             filter: FilterState {
-                input: filter,
-                cursor,
+                text: TextState {
+                    input: filter,
+                    cursor,
+                },
                 generated: String::new(),
                 error: None,
                 history: load_history(),
@@ -346,6 +411,12 @@ impl ExploreSession {
                 completion_index: 0,
                 completion_prefix: String::new(),
             },
+            output: TextState {
+                cursor: output_input.len(),
+                input: output_input,
+            },
+            active_input: ActiveInput::Filter,
+            output_options,
             preview: PreviewState {
                 lines: Vec::new(),
                 limit: config.max_preview_results,
@@ -363,8 +434,13 @@ impl ExploreSession {
         session
     }
 
-    fn new_streaming(filter: String, config: ExploreConfig) -> Self {
-        let mut session = Self::new(Vec::new(), filter, config);
+    fn new_streaming(
+        filter: String,
+        output_input: String,
+        config: ExploreConfig,
+        output_options: output::OutputOptions,
+    ) -> Self {
+        let mut session = Self::new(Vec::new(), filter, output_input, config, output_options);
         session.stream = Some(StreamState {
             ended: false,
             errors: Vec::new(),
@@ -396,7 +472,7 @@ impl ExploreSession {
     }
 
     fn refresh(&mut self) {
-        match shortcuts::expression_to_jq(&self.filter.input) {
+        match compose_explore_jq(&self.filter.text.input, &self.output.input) {
             Ok(generated) => {
                 self.filter.generated = generated;
                 self.persist_last_filter();
@@ -404,6 +480,7 @@ impl ExploreSession {
                     &self.data.values,
                     &self.filter.generated,
                     self.preview.limit,
+                    &output::OutputOptions::plain(),
                 ) {
                     Ok(preview) => {
                         self.preview.lines = preview;
@@ -424,23 +501,25 @@ impl ExploreSession {
     }
 
     fn autocomplete_filter(&mut self) {
+        let active_input = self.active_text().input.clone();
         if !self.filter.completions.is_empty()
             && self
                 .filter
                 .completions
                 .get(self.filter.completion_index)
-                .is_some_and(|candidate| candidate == &self.filter.input)
+                .is_some_and(|candidate| candidate == &active_input)
         {
             self.filter.completion_index =
                 (self.filter.completion_index + 1) % self.filter.completions.len();
-            self.filter.input = self.filter.completions[self.filter.completion_index].clone();
-            self.filter.cursor = self.filter.input.len();
+            let replacement = self.filter.completions[self.filter.completion_index].clone();
+            self.active_text_mut().input = replacement;
+            self.active_text_mut().cursor = self.active_text().input.len();
             self.message = Some(self.completion_message());
             self.refresh();
             return;
         }
 
-        let prefix = self.filter.input.trim();
+        let prefix = self.active_text().input.trim().to_owned();
         if prefix.is_empty() || prefix.starts_with('.') || prefix.starts_with("select(") {
             return;
         }
@@ -449,15 +528,15 @@ impl ExploreSession {
             .data
             .fields
             .iter()
-            .filter(|field| field.path.starts_with(prefix))
+            .filter(|field| field.path.starts_with(&prefix))
             .map(|field| field.path.clone())
             .collect();
         self.filter.completion_index = 0;
-        self.filter.completion_prefix = prefix.to_owned();
+        self.filter.completion_prefix = prefix;
 
         if let Some(field) = self.filter.completions.first() {
-            self.filter.input = field.clone();
-            self.filter.cursor = self.filter.input.len();
+            self.active_text_mut().input = field.clone();
+            self.active_text_mut().cursor = self.active_text().input.len();
             self.message = Some(self.completion_message());
             self.refresh();
         }
@@ -523,7 +602,7 @@ impl ExploreSession {
     }
 
     fn record_history(&mut self) {
-        let input = self.filter.input.trim();
+        let input = self.filter.text.input.trim();
         if input.is_empty() || self.filter.history.last().is_some_and(|last| last == input) {
             return;
         }
@@ -551,8 +630,9 @@ impl ExploreSession {
             return;
         }
         self.filter.history_index = Some(next);
-        self.filter.input = self.filter.history[next].clone();
-        self.filter.cursor = self.filter.input.len();
+        self.filter.text.input = self.filter.history[next].clone();
+        self.filter.text.cursor = self.filter.text.input.len();
+        self.active_input = ActiveInput::Filter;
         self.message = Some(format!(
             "history {}/{}",
             next + 1,
@@ -563,38 +643,110 @@ impl ExploreSession {
 
     fn insert_char(&mut self, ch: char) {
         self.clear_completion_state();
-        self.filter.input.insert(self.filter.cursor, ch);
-        self.filter.cursor += ch.len_utf8();
+        let text = self.active_text_mut();
+        text.input.insert(text.cursor, ch);
+        text.cursor += ch.len_utf8();
         self.refresh();
     }
 
     fn backspace(&mut self) {
         self.clear_completion_state();
-        if self.filter.cursor == 0 {
+        let text = self.active_text_mut();
+        if text.cursor == 0 {
             return;
         }
-        let previous = previous_boundary(&self.filter.input, self.filter.cursor);
-        self.filter.input.drain(previous..self.filter.cursor);
-        self.filter.cursor = previous;
+        let previous = previous_boundary(&text.input, text.cursor);
+        text.input.drain(previous..text.cursor);
+        text.cursor = previous;
         self.refresh();
     }
 
     fn delete(&mut self) {
         self.clear_completion_state();
-        if self.filter.cursor >= self.filter.input.len() {
+        let text = self.active_text_mut();
+        if text.cursor >= text.input.len() {
             return;
         }
-        let next = next_boundary(&self.filter.input, self.filter.cursor);
-        self.filter.input.drain(self.filter.cursor..next);
+        let next = next_boundary(&text.input, text.cursor);
+        text.input.drain(text.cursor..next);
         self.refresh();
     }
 
     fn move_cursor_left(&mut self) {
-        self.filter.cursor = previous_boundary(&self.filter.input, self.filter.cursor);
+        let text = self.active_text_mut();
+        text.cursor = previous_boundary(&text.input, text.cursor);
     }
 
     fn move_cursor_right(&mut self) {
-        self.filter.cursor = next_boundary(&self.filter.input, self.filter.cursor);
+        let text = self.active_text_mut();
+        text.cursor = next_boundary(&text.input, text.cursor);
+    }
+
+    fn active_text(&self) -> &TextState {
+        match self.active_input {
+            ActiveInput::Filter => &self.filter.text,
+            ActiveInput::Output => &self.output,
+        }
+    }
+
+    fn active_text_mut(&mut self) -> &mut TextState {
+        match self.active_input {
+            ActiveInput::Filter => &mut self.filter.text,
+            ActiveInput::Output => &mut self.output,
+        }
+    }
+
+    fn toggle_active_input(&mut self) {
+        self.clear_completion_state();
+        self.active_input = match self.active_input {
+            ActiveInput::Filter => ActiveInput::Output,
+            ActiveInput::Output => ActiveInput::Filter,
+        };
+        self.message = Some(format!(
+            "editing {}",
+            match self.active_input {
+                ActiveInput::Filter => "filter",
+                ActiveInput::Output => "output",
+            }
+        ));
+    }
+
+    fn toggle_pretty(&mut self) {
+        self.output_options.pretty = !self.output_options.pretty;
+        self.message = Some(format!(
+            "pretty {}",
+            if self.output_options.pretty {
+                "on"
+            } else {
+                "off"
+            }
+        ));
+        self.refresh();
+    }
+
+    fn toggle_level_color(&mut self) {
+        self.output_options.color_level = !self.output_options.color_level;
+        self.output_options.no_color = false;
+        self.message = Some(format!(
+            "level color {}",
+            if self.output_options.color_level {
+                "on"
+            } else {
+                "off"
+            }
+        ));
+    }
+
+    fn toggle_no_color(&mut self) {
+        self.output_options.no_color = !self.output_options.no_color;
+        self.message = Some(format!(
+            "color {}",
+            if self.output_options.no_color {
+                "off"
+            } else {
+                "on"
+            }
+        ));
     }
 
     fn clear_completion_state(&mut self) {
@@ -663,7 +815,12 @@ fn saturating_offset(current: usize, delta: isize, len: usize) -> usize {
     }
 }
 
-fn preview_values(values: &[Val], filter: &str, limit: usize) -> Result<Vec<String>, String> {
+fn preview_values(
+    values: &[Val],
+    filter: &str,
+    limit: usize,
+    options: &output::OutputOptions,
+) -> Result<Vec<String>, String> {
     let matcher = Matcher::compile(filter)?;
     let mut lines = Vec::new();
 
@@ -672,7 +829,7 @@ fn preview_values(values: &[Val], filter: &str, limit: usize) -> Result<Vec<Stri
             if !matcher::is_match(&result) {
                 continue;
             }
-            lines.push(output::format_value(&result, false).map_err(|e| e.to_string())?);
+            lines.push(output::format_result(&result, value, options).map_err(|e| e.to_string())?);
             if lines.len() >= limit {
                 return Ok(lines);
             }
@@ -687,10 +844,19 @@ fn print_snapshot(session: &ExploreSession, out: &mut dyn Write) -> io::Result<(
     writeln!(
         out,
         "filter: {}",
-        if session.filter.input.trim().is_empty() {
+        if session.filter.text.input.trim().is_empty() {
             "."
         } else {
-            session.filter.input.trim()
+            session.filter.text.input.trim()
+        }
+    )?;
+    writeln!(
+        out,
+        "output: {}",
+        if session.output.input.trim().is_empty() {
+            "."
+        } else {
+            session.output.input.trim()
         }
     )?;
     writeln!(out, "generated jq: {}", session.filter.generated)?;
@@ -720,11 +886,20 @@ fn print_snapshot(session: &ExploreSession, out: &mut dyn Write) -> io::Result<(
     writeln!(out, "preview:")?;
     if let Some(error) = &session.filter.error {
         writeln!(out, "  error: {error}")?;
-    } else if session.preview.lines.is_empty() {
-        writeln!(out, "  no matches")?;
     } else {
-        for line in &session.preview.lines {
-            writeln!(out, "  {line}")?;
+        let preview = preview_values(
+            &session.data.values,
+            &session.filter.generated,
+            session.preview.limit,
+            &session.output_options,
+        )
+        .unwrap_or_default();
+        if preview.is_empty() {
+            writeln!(out, "  no matches")?;
+        } else {
+            for line in &preview {
+                writeln!(out, "  {line}")?;
+            }
         }
     }
     Ok(())
@@ -735,8 +910,12 @@ fn print_results(session: &ExploreSession) -> i32 {
         eprintln!("{NAME}: explore: {error}");
         return 2;
     }
-    let results = match preview_values(&session.data.values, &session.filter.generated, usize::MAX)
-    {
+    let results = match preview_values(
+        &session.data.values,
+        &session.filter.generated,
+        usize::MAX,
+        &session.output_options,
+    ) {
         Ok(results) => results,
         Err(e) => {
             eprintln!("{NAME}: explore: {e}");
@@ -894,6 +1073,22 @@ fn handle_key(
             session.save_filter();
             None
         }
+        KeyCode::Char('o') if modifiers.contains(KeyModifiers::CONTROL) => {
+            session.toggle_active_input();
+            None
+        }
+        KeyCode::Char('b') if modifiers.contains(KeyModifiers::CONTROL) => {
+            session.toggle_pretty();
+            None
+        }
+        KeyCode::Char('l') if modifiers.contains(KeyModifiers::CONTROL) => {
+            session.toggle_level_color();
+            None
+        }
+        KeyCode::Char('k') if modifiers.contains(KeyModifiers::CONTROL) => {
+            session.toggle_no_color();
+            None
+        }
         KeyCode::Char('p') if modifiers.contains(KeyModifiers::CONTROL) => {
             session.load_history_entry(true);
             None
@@ -915,11 +1110,11 @@ fn handle_key(
             None
         }
         KeyCode::Home => {
-            session.filter.cursor = 0;
+            session.active_text_mut().cursor = 0;
             None
         }
         KeyCode::End => {
-            session.filter.cursor = session.filter.input.len();
+            session.active_text_mut().cursor = session.active_text().input.len();
             None
         }
         KeyCode::Delete => {
@@ -977,25 +1172,55 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
     let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(6),
             Constraint::Min(5),
-            Constraint::Length(3),
+            Constraint::Length(5),
         ])
         .split(frame.area());
+
+    let inputs = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Length(3)])
+        .split(outer[0]);
 
     let body = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(36), Constraint::Percentage(64)])
         .split(outer[1]);
 
-    let filter_width = outer[0].width.saturating_sub(2);
-    let (filter_input, cursor_column) =
-        filter_view(&session.filter.input, session.filter.cursor, filter_width);
-    let filter =
-        Paragraph::new(filter_input).block(Block::default().title("Filter").borders(Borders::ALL));
-    frame.render_widget(filter, outer[0]);
-    let cursor_x = outer[0].x + 1 + cursor_column;
-    frame.set_cursor_position(Position::new(cursor_x, outer[0].y + 1));
+    let filter_width = inputs[0].width.saturating_sub(2);
+    let (filter_input, filter_cursor_column) = filter_view(
+        &session.filter.text.input,
+        session.filter.text.cursor,
+        filter_width,
+    );
+    let filter_title = if session.active_input == ActiveInput::Filter {
+        "Filter *"
+    } else {
+        "Filter"
+    };
+    let filter = Paragraph::new(filter_input)
+        .block(Block::default().title(filter_title).borders(Borders::ALL));
+    frame.render_widget(filter, inputs[0]);
+
+    let output_width = inputs[1].width.saturating_sub(2);
+    let (output_input, output_cursor_column) =
+        filter_view(&session.output.input, session.output.cursor, output_width);
+    let output_title = if session.active_input == ActiveInput::Output {
+        "Output *"
+    } else {
+        "Output"
+    };
+    let output = Paragraph::new(output_input)
+        .block(Block::default().title(output_title).borders(Borders::ALL));
+    frame.render_widget(output, inputs[1]);
+
+    let (cursor_area, cursor_column) = match session.active_input {
+        ActiveInput::Filter => (inputs[0], filter_cursor_column),
+        ActiveInput::Output => (inputs[1], output_cursor_column),
+    };
+    let cursor_x = cursor_area.x + 1 + cursor_column;
+    frame.set_cursor_position(Position::new(cursor_x, cursor_area.y + 1));
 
     let fields = session
         .data
@@ -1064,22 +1289,40 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
         body[1],
     );
 
-    let hint = session.message.clone().unwrap_or_else(|| {
-        let mut hint = format!(
-            "{} preview matches | generated: {} | Tab complete | Arrows/Page scroll | Ctrl-P/N history | Enter print | Ctrl-Y jq | Ctrl-S save | Esc quit",
+    let status = session.message.clone().unwrap_or_else(|| {
+        let pretty = if session.output_options.pretty {
+            "pretty:on"
+        } else {
+            "pretty:off"
+        };
+        let level = if session.output_options.color_level && !session.output_options.no_color {
+            "level-color:on"
+        } else {
+            "level-color:off"
+        };
+        format!(
+            "{} matches | {pretty} | {level} | generated: {}",
             session.preview.lines.len(),
             session.filter.generated
-        );
-        if let Some(stream) = &session.stream {
-            let status = if stream.ended { "complete" } else { "live" };
-            hint = format!(
-                "{hint} | stream {status}: {} docs, {} errors",
-                session.data.values.len(),
-                stream.errors.len()
-            );
-        }
-        hint
+        )
     });
+    let stream_status = session.stream.as_ref().map(|stream| {
+        let status = if stream.ended { "complete" } else { "live" };
+        format!(
+            "stream {status}: {} docs, {} errors",
+            session.data.values.len(),
+            stream.errors.len()
+        )
+    });
+    let hint = if let Some(stream_status) = stream_status {
+        format!(
+            "{status}\n{stream_status}\nCtrl-O input | Tab complete | Ctrl-B pretty | Ctrl-L level color | Ctrl-K color off/on | Ctrl-P/N history | Enter print | Ctrl-Y jq | Ctrl-S save | Esc quit"
+        )
+    } else {
+        format!(
+            "{status}\nCtrl-O input | Tab complete | Ctrl-B pretty | Ctrl-L level color | Ctrl-K color off/on | Ctrl-P/N history | Enter print | Ctrl-Y jq | Ctrl-S save | Esc quit"
+        )
+    };
     let hint_style = if session.filter.error.is_some() {
         Style::default().fg(Color::Red)
     } else {
@@ -1111,7 +1354,7 @@ mod tests {
         .unwrap();
         let jq = shortcuts::expression_to_jq("status=active").unwrap();
 
-        let preview = preview_values(&values, &jq, 10).unwrap();
+        let preview = preview_values(&values, &jq, 10, &output::OutputOptions::plain()).unwrap();
 
         assert_eq!(preview, [r#"{"name":"Alice","status":"active"}"#]);
     }
@@ -1124,7 +1367,7 @@ mod tests {
 
         let values = read_values(Some(&file), 1024 * 1024).unwrap();
         let jq = shortcuts::expression_to_jq("name").unwrap();
-        let preview = preview_values(&values, &jq, 10).unwrap();
+        let preview = preview_values(&values, &jq, 10, &output::OutputOptions::plain()).unwrap();
 
         assert_eq!(preview, ["Alice"]);
     }
@@ -1141,6 +1384,80 @@ mod tests {
     }
 
     #[test]
+    fn combines_filter_and_output_projection() {
+        assert_eq!(
+            compose_explore_jq("log.level=ERROR", "message").unwrap(),
+            "select((if type == \"object\" and has(\"log.level\") then .[\"log.level\"] else .log.level end) == \"ERROR\") | .message"
+        );
+        assert_eq!(compose_explore_jq("", "message").unwrap(), ".message");
+        assert_eq!(
+            compose_explore_jq("status=active", "").unwrap(),
+            "select(.status == \"active\") | ."
+        );
+    }
+
+    #[test]
+    fn output_input_can_be_edited_live() {
+        let values = parse_values(
+            InputKind::Json,
+            br#"{"name":"Alice","status":"active"}"#,
+            false,
+        )
+        .unwrap();
+        let config = ExploreConfig {
+            max_input_bytes: 1024 * 1024,
+            max_schema_documents: 10,
+            max_preview_results: 10,
+            max_schema_depth: 4,
+        };
+        let mut session = ExploreSession::new(
+            values,
+            "status=active".to_owned(),
+            String::new(),
+            config,
+            output::OutputOptions::plain(),
+        );
+
+        handle_key(&mut session, KeyCode::Char('o'), KeyModifiers::CONTROL);
+        for ch in "name".chars() {
+            handle_key(&mut session, KeyCode::Char(ch), KeyModifiers::NONE);
+        }
+
+        assert_eq!(session.active_input, ActiveInput::Output);
+        assert_eq!(session.output.input, "name");
+        assert_eq!(
+            session.filter.generated,
+            "select(.status == \"active\") | .name"
+        );
+        assert_eq!(session.preview.lines, ["Alice"]);
+    }
+
+    #[test]
+    fn output_options_can_be_toggled_live() {
+        let config = ExploreConfig {
+            max_input_bytes: 1024 * 1024,
+            max_schema_documents: 10,
+            max_preview_results: 10,
+            max_schema_depth: 4,
+        };
+        let mut session = ExploreSession::new(
+            Vec::new(),
+            String::new(),
+            String::new(),
+            config,
+            output::OutputOptions::plain(),
+        );
+
+        handle_key(&mut session, KeyCode::Char('b'), KeyModifiers::CONTROL);
+        handle_key(&mut session, KeyCode::Char('l'), KeyModifiers::CONTROL);
+        handle_key(&mut session, KeyCode::Char('k'), KeyModifiers::CONTROL);
+
+        assert!(session.output_options.pretty);
+        assert!(session.output_options.color_level);
+        assert!(session.output_options.no_color);
+    }
+
+    #[test]
     fn autocomplete_cycles_candidates_with_type_info() {
         let values = parse_values(
             InputKind::Json,
@@ -1154,11 +1471,17 @@ mod tests {
             max_preview_results: 10,
             max_schema_depth: 4,
         };
-        let mut session = ExploreSession::new(values, "n".to_owned(), config);
+        let mut session = ExploreSession::new(
+            values,
+            "n".to_owned(),
+            String::new(),
+            config,
+            output::OutputOptions::plain(),
+        );
 
         handle_key(&mut session, KeyCode::Tab, KeyModifiers::NONE);
 
-        assert_eq!(session.filter.input, "name");
+        assert_eq!(session.filter.text.input, "name");
         assert!(session
             .message
             .as_deref()
@@ -1167,7 +1490,7 @@ mod tests {
 
         handle_key(&mut session, KeyCode::Tab, KeyModifiers::NONE);
 
-        assert_eq!(session.filter.input, "namespace");
+        assert_eq!(session.filter.text.input, "namespace");
         assert!(session
             .message
             .as_deref()
@@ -1184,20 +1507,26 @@ mod tests {
             max_preview_results: 10,
             max_schema_depth: 4,
         };
-        let mut session = ExploreSession::new(values, "name".to_owned(), config);
+        let mut session = ExploreSession::new(
+            values,
+            "name".to_owned(),
+            String::new(),
+            config,
+            output::OutputOptions::plain(),
+        );
 
         handle_key(&mut session, KeyCode::Left, KeyModifiers::NONE);
         handle_key(&mut session, KeyCode::Left, KeyModifiers::NONE);
         handle_key(&mut session, KeyCode::Char('X'), KeyModifiers::NONE);
 
-        assert_eq!(session.filter.input, "naXme");
-        assert_eq!(session.filter.cursor, 3);
+        assert_eq!(session.filter.text.input, "naXme");
+        assert_eq!(session.filter.text.cursor, 3);
 
         handle_key(&mut session, KeyCode::Backspace, KeyModifiers::NONE);
         handle_key(&mut session, KeyCode::Delete, KeyModifiers::NONE);
 
-        assert_eq!(session.filter.input, "nae");
-        assert_eq!(session.filter.cursor, 2);
+        assert_eq!(session.filter.text.input, "nae");
+        assert_eq!(session.filter.text.cursor, 2);
     }
 
     #[test]
@@ -1214,12 +1543,18 @@ mod tests {
             max_preview_results: 10,
             max_schema_depth: 4,
         };
-        let mut session = ExploreSession::new(values, String::new(), config);
+        let mut session = ExploreSession::new(
+            values,
+            String::new(),
+            String::new(),
+            config,
+            output::OutputOptions::plain(),
+        );
         session.filter.history = vec!["name".to_owned(), "status=active".to_owned()];
 
         handle_key(&mut session, KeyCode::Char('p'), KeyModifiers::CONTROL);
 
-        assert_eq!(session.filter.input, "status=active");
+        assert_eq!(session.filter.text.input, "status=active");
         assert_eq!(
             session.preview.lines,
             [r#"{"name":"Alice","status":"active"}"#]
@@ -1227,7 +1562,7 @@ mod tests {
 
         handle_key(&mut session, KeyCode::Char('p'), KeyModifiers::CONTROL);
 
-        assert_eq!(session.filter.input, "name");
+        assert_eq!(session.filter.text.input, "name");
         assert_eq!(session.preview.lines, ["Alice"]);
     }
 
@@ -1245,7 +1580,13 @@ mod tests {
             max_preview_results: 10,
             max_schema_depth: 4,
         };
-        let session = ExploreSession::new(values, "name".to_owned(), config);
+        let session = ExploreSession::new(
+            values,
+            "name".to_owned(),
+            String::new(),
+            config,
+            output::OutputOptions::plain(),
+        );
         let backend = TestBackend::new(100, 24);
         let mut terminal = Terminal::new(backend).unwrap();
 
@@ -1263,6 +1604,36 @@ mod tests {
         assert!(rendered.contains("Preview"));
         assert!(rendered.contains("Alice"));
         assert!(rendered.contains("Tab complete"));
+    }
+
+    #[test]
+    fn render_stream_status_keeps_shortcut_help_visible() {
+        let config = ExploreConfig {
+            max_input_bytes: 1024 * 1024,
+            max_schema_documents: 10,
+            max_preview_results: 10,
+            max_schema_depth: 4,
+        };
+        let session = ExploreSession::new_streaming(
+            String::new(),
+            String::new(),
+            config,
+            output::OutputOptions::plain(),
+        );
+        let backend = TestBackend::new(100, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal.draw(|frame| render(frame, &session)).unwrap();
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+
+        assert!(rendered.contains("stream live"));
+        assert!(rendered.contains("Ctrl-O input"));
     }
 
     #[test]

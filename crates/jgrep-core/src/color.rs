@@ -1,7 +1,5 @@
 use jaq_json::Val;
 
-use crate::cli::Cli;
-
 const CYAN: &str = "\u{1b}[36m";
 const GREEN: &str = "\u{1b}[32m";
 const BLUE: &str = "\u{1b}[34m";
@@ -31,17 +29,23 @@ pub fn color_for_level(level: &str) -> Option<&'static str> {
     }
 }
 
-pub fn colorize_by_level(text: &str, source: &Val, cli: &Cli) -> Option<String> {
-    if !cli.use_level_color() {
+pub fn colorize_by_level(
+    text: &str,
+    source: &Val,
+    color_level: bool,
+    no_color: bool,
+    color_level_field: Option<&str>,
+) -> Option<String> {
+    if !color_level || no_color || std::env::var_os("NO_COLOR").is_some() {
         return None;
     }
-    let level = level_value(source, cli)?;
+    let level = level_value(source, color_level_field)?;
     let color = color_for_level(&level)?;
     Some(format!("{color}{text}{RESET}"))
 }
 
-fn level_value(source: &Val, cli: &Cli) -> Option<String> {
-    if let Some(field) = cli.color_level_field.as_deref().filter(|s| !s.is_empty()) {
+fn level_value(source: &Val, color_level_field: Option<&str>) -> Option<String> {
+    if let Some(field) = color_level_field.filter(|s| !s.is_empty()) {
         return field_value(source, field).and_then(scalar_text);
     }
     DEFAULT_LEVEL_FIELDS
