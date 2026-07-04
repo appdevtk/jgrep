@@ -2,14 +2,23 @@
 set -euo pipefail
 
 delay="${JGREP_DEMO_DELAY:-0.45}"
+loops="${JGREP_DEMO_LOOPS:-4}"
 
 emit() {
   printf '%s\n' "$1"
   sleep "$delay"
 }
 
-emit '{"@timestamp":"2026-07-04T10:15:00Z","log":{"level":"INFO"},"kubernetes":{"namespace":"shop","pod":"checkout-7fbf9d7c8f-x9q2m"},"service":{"name":"checkout"},"message":"request accepted","trace":{"id":"trc-1001"}}'
-emit '{"@timestamp":"2026-07-04T10:15:01Z","log":{"level":"WARN"},"kubernetes":{"namespace":"shop","pod":"checkout-7fbf9d7c8f-x9q2m"},"service":{"name":"checkout"},"message":"retrying payment provider","trace":{"id":"trc-1002"}}'
-emit '{"@timestamp":"2026-07-04T10:15:02Z","log":{"level":"ERROR"},"kubernetes":{"namespace":"shop","pod":"checkout-7fbf9d7c8f-x9q2m"},"service":{"name":"checkout"},"message":"payment declined","trace":{"id":"trc-1003"}}'
-emit '{"@timestamp":"2026-07-04T10:15:03Z","log":{"level":"INFO"},"kubernetes":{"namespace":"shop","pod":"cart-65bfcbf88d-pm7xz"},"service":{"name":"cart"},"message":"cart updated","trace":{"id":"trc-1004"}}'
-emit '{"@timestamp":"2026-07-04T10:15:04Z","log":{"level":"ERROR"},"kubernetes":{"namespace":"shop","pod":"checkout-7fbf9d7c8f-x9q2m"},"service":{"name":"checkout"},"message":"fallback charge failed","trace":{"id":"trc-1005"}}'
+for i in $(seq 1 "$loops"); do
+  minute=$(printf '%02d' $((14 + i)))
+  checkout_pod="checkout-7fbf9d7c8f-x9q2m"
+  cart_pod="cart-65bfcbf88d-pm7xz"
+  worker_pod="payment-worker-6b7d9df56d-mh${i}qk"
+
+  emit "{\"@timestamp\":\"2026-07-04T10:${minute}:00Z\",\"log\":{\"level\":\"INFO\"},\"kubernetes\":{\"namespace\":\"shop\",\"pod\":\"${checkout_pod}\"},\"service\":{\"name\":\"checkout\"},\"message\":\"request accepted\",\"trace\":{\"id\":\"trc-${i}001\"}}"
+  emit "{\"@timestamp\":\"2026-07-04T10:${minute}:01Z\",\"log\":{\"level\":\"DEBUG\"},\"kubernetes\":{\"namespace\":\"shop\",\"pod\":\"${worker_pod}\"},\"service\":{\"name\":\"payment\"},\"message\":\"provider latency ${i}42ms\",\"trace\":{\"id\":\"trc-${i}002\"}}"
+  emit "{\"@timestamp\":\"2026-07-04T10:${minute}:02Z\",\"log\":{\"level\":\"WARN\"},\"kubernetes\":{\"namespace\":\"shop\",\"pod\":\"${checkout_pod}\"},\"service\":{\"name\":\"checkout\"},\"message\":\"retrying payment provider\",\"trace\":{\"id\":\"trc-${i}003\"}}"
+  emit "{\"@timestamp\":\"2026-07-04T10:${minute}:03Z\",\"log\":{\"level\":\"ERROR\"},\"kubernetes\":{\"namespace\":\"shop\",\"pod\":\"${checkout_pod}\"},\"service\":{\"name\":\"checkout\"},\"message\":\"payment declined\",\"trace\":{\"id\":\"trc-${i}004\"}}"
+  emit "{\"@timestamp\":\"2026-07-04T10:${minute}:04Z\",\"log\":{\"level\":\"INFO\"},\"kubernetes\":{\"namespace\":\"shop\",\"pod\":\"${cart_pod}\"},\"service\":{\"name\":\"cart\"},\"message\":\"cart updated\",\"trace\":{\"id\":\"trc-${i}005\"}}"
+  emit "{\"@timestamp\":\"2026-07-04T10:${minute}:05Z\",\"log\":{\"level\":\"ERROR\"},\"kubernetes\":{\"namespace\":\"shop\",\"pod\":\"${worker_pod}\"},\"service\":{\"name\":\"payment\"},\"message\":\"fallback charge failed\",\"trace\":{\"id\":\"trc-${i}006\"}}"
+done

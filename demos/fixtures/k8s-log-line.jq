@@ -1,1 +1,1 @@
-"[\(.log.level)] \(.kubernetes.pod) \(.message) trace=\(.trace.id)"
+"[\(.log.level)] \(.service.name) \(.message) \(.trace.id)"

@@ -14,7 +14,7 @@ Type "cargo build -q -p jgrep"
 Enter
 Sleep 2s
 
-Type "JGREP_DEMO_DELAY=0.45 demos/scripts/k8s-log-stream.sh | ./target/debug/jgrep explore"
+Type "JGREP_DEMO_LOOPS=5 JGREP_DEMO_DELAY=0.24 demos/scripts/k8s-log-stream.sh | ./target/debug/jgrep explore"
 Enter
 Wait+Screen /streaming stdin/
 Sleep 1s
@@ -22,7 +22,8 @@ Sleep 1s
 Type "log.level=ERROR"
 Wait+Screen /declined/
 Wait+Screen /fallback/
-Sleep 2s
+Wait+Screen /streaming stdin/
+Sleep 3s
 
 Escape
 Sleep 1s

@@ -14,8 +14,9 @@ Type "cargo build -q -p jgrep"
 Enter
 Sleep 2s
 
-Type "JGREP_DEMO_DELAY=0.35 demos/scripts/k8s-log-stream.sh | ./target/debug/jgrep -C -f demos/fixtures/k8s-log-line.jq"
+Type "JGREP_DEMO_LOOPS=5 JGREP_DEMO_DELAY=0.22 demos/scripts/k8s-log-stream.sh | ./target/debug/jgrep -C -f demos/fixtures/k8s-log-line.jq"
 Enter
 Wait+Screen /payment declined/
 Wait+Screen /fallback charge failed/
-Sleep 2s
+Wait+Screen /trc-3006/
+Sleep 3s
