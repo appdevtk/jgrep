@@ -11,6 +11,8 @@ mkdir -p demos/out
 vhs demos/tapes/quickstart.tape
 vhs demos/tapes/yaml-and-recursive.tape
 vhs demos/tapes/shortcuts-and-slurp.tape
+vhs demos/tapes/counts-files-null.tape
+vhs demos/tapes/pretty-and-custom-color.tape
 vhs demos/tapes/explorer-snapshot.tape
 vhs demos/tapes/streaming-highlight.tape
 vhs demos/tapes/explore-tui-streaming.tape
@@ -34,9 +36,14 @@ jgrep '.name' demos/fixtures/users.ndjson
 jgrep 'select(.age >= 18) | .name' demos/fixtures/users.ndjson
 jgrep -w status=active -p name demos/fixtures/users.ndjson
 jgrep -s '.role' demos/fixtures/users.ndjson
+jgrep -c -w status=active demos/fixtures/users.ndjson
+jgrep -l -w status=active demos/fixtures/users.ndjson demos/fixtures/logs.ndjson
+jgrep -n '{count:2, files:1, null_input:true}'
+jgrep --pretty '{name, role, city: .address.city}' demos/fixtures/users.ndjson
 jgrep '.spec.template.spec.containers[].image' demos/fixtures/k8s/deployment.yaml
 jgrep -r 'select(.kind == "Deployment" and .spec.replicas > 2) | .metadata.name' demos/fixtures/k8s
 jgrep -C -w log.level=ERROR demos/fixtures/logs.ndjson
+jgrep -C --color-level-field app.level '{level:.app.level,message,trace_id}' demos/fixtures/app-logs.ndjson
 jgrep explore --print --filter status=active demos/fixtures/users.ndjson
 jgrep completion bash | sed -n '1,12p'
 

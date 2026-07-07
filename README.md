@@ -208,6 +208,8 @@ mkdir -p demos/out
 vhs demos/tapes/quickstart.tape
 vhs demos/tapes/yaml-and-recursive.tape
 vhs demos/tapes/shortcuts-and-slurp.tape
+vhs demos/tapes/counts-files-null.tape
+vhs demos/tapes/pretty-and-custom-color.tape
 vhs demos/tapes/explorer-snapshot.tape
 vhs demos/tapes/streaming-highlight.tape
 vhs demos/tapes/explore-tui-streaming.tape

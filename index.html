@@ -453,6 +453,8 @@ jgrep --color-level --color-level-field app.level app.ndjson</code></pre>
 vhs demos/tapes/quickstart.tape
 vhs demos/tapes/yaml-and-recursive.tape
 vhs demos/tapes/shortcuts-and-slurp.tape
+vhs demos/tapes/counts-files-null.tape
+vhs demos/tapes/pretty-and-custom-color.tape
 vhs demos/tapes/explorer-snapshot.tape
 vhs demos/tapes/streaming-highlight.tape
 vhs demos/tapes/explore-tui-streaming.tape
@@ -484,6 +486,22 @@ VHS_NO_SANDBOX=1 vhs demos/tapes/quickstart.tape</code></pre>
               <p><code>-w</code>, <code>-p</code>, filter files, and JSON array output.</p>
             </div>
             <a href="demos/tapes/shortcuts-and-slurp.tape">View tape</a>
+          </article>
+          <article class="demo-card">
+            <img src="demos/out/counts-files-null.gif" alt="jgrep demo counting matches, listing matching files, and evaluating without input" loading="lazy">
+            <div>
+              <h3>Counts, files, no input</h3>
+              <p><code>-c</code>, <code>-l</code>, and <code>-n</code> for reporting and generated values.</p>
+            </div>
+            <a href="demos/tapes/counts-files-null.tape">View tape</a>
+          </article>
+          <article class="demo-card">
+            <img src="demos/out/pretty-and-custom-color.gif" alt="jgrep demo pretty-printing object output and coloring logs by a custom level field" loading="lazy">
+            <div>
+              <h3>Pretty and custom color</h3>
+              <p>Pretty object projections plus <code>--color-level-field</code> for app logs.</p>
+            </div>
+            <a href="demos/tapes/pretty-and-custom-color.tape">View tape</a>
           </article>
           <article class="demo-card">
             <img src="demos/out/explorer-snapshot.gif" alt="jgrep explore snapshot demo with schema preview and shell completion output" loading="lazy">
