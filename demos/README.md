@@ -39,19 +39,19 @@ jgrep -s '.role' demos/fixtures/users.ndjson
 jgrep -c -w status=active demos/fixtures/users.ndjson
 jgrep -l -w status=active demos/fixtures/users.ndjson demos/fixtures/logs.ndjson
 jgrep -n '{count:2, files:1, null_input:true}'
-jgrep --pretty '{name, role, city: .address.city}' demos/fixtures/users.ndjson
+env -u NO_COLOR jgrep --pretty '{name, role, city: .address.city}' demos/fixtures/users.ndjson
 jgrep '.spec.template.spec.containers[].image' demos/fixtures/k8s/deployment.yaml
 jgrep -r 'select(.kind == "Deployment" and .spec.replicas > 2) | .metadata.name' demos/fixtures/k8s
-jgrep -C -w log.level=ERROR demos/fixtures/logs.ndjson
-jgrep -C --color-level-field app.level '{level:.app.level,message,trace_id}' demos/fixtures/app-logs.ndjson
+env -u NO_COLOR jgrep -C -w log.level=ERROR demos/fixtures/logs.ndjson
+env -u NO_COLOR jgrep -C --color-level-field app.level '{level:.app.level,message,trace_id}' demos/fixtures/app-logs.ndjson
 jgrep explore --print --filter status=active demos/fixtures/users.ndjson
 jgrep completion bash | sed -n '1,12p'
 
 JGREP_DEMO_DELAY=0.35 demos/scripts/k8s-log-stream.sh |
-  jgrep -C -f demos/fixtures/k8s-log-line.jq
+  env -u NO_COLOR jgrep -C -f demos/fixtures/k8s-log-line.jq
 
 JGREP_DEMO_DELAY=0.45 demos/scripts/k8s-log-stream.sh |
   jgrep explore
 ```
 
-In the live TUI demo, type `log.level=ERROR`, press `Ctrl-F` and `Ctrl-L`, press `Ctrl-O`, then type `{level:.log.level,message,trace_id}` to switch from filtering records to choosing a multi-field printed output.
+In the live TUI demo, type `log.level=ERROR`, press `Ctrl-F`, `Ctrl-L`, and `Ctrl-G`, press `Ctrl-O`, then type `{level:.log.level,message,trace_id}` to switch from filtering records to a wide multi-field log preview.

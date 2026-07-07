@@ -25,12 +25,14 @@ Wait+Screen /fallback/
 Wait+Screen /stream/
 Ctrl+F
 Ctrl+L
+Ctrl+G
 Ctrl+O
 Sleep 500ms
 Type "{level:.log.level,message,trace_id}"
 Wait+Screen /payment declined/
 Wait+Screen /fallback charge failed/
 Wait+Screen /trace_id/
+Wait+Screen /logs:full/
 Sleep 3s
 
 Escape

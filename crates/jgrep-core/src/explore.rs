@@ -370,6 +370,7 @@ struct ExploreSession {
     filter: FilterState,
     output: TextState,
     active_input: ActiveInput,
+    preview_fullscreen: bool,
     output_options: output::OutputOptions,
     preview: PreviewState,
     persistence: ExplorerPersistence,
@@ -423,6 +424,7 @@ impl ExploreSession {
                 input: output_input,
             },
             active_input: ActiveInput::Filter,
+            preview_fullscreen: false,
             output_options,
             preview: PreviewState {
                 lines: Vec::new(),
@@ -723,6 +725,18 @@ impl ExploreSession {
         ));
     }
 
+    fn toggle_preview_fullscreen(&mut self) {
+        self.preview_fullscreen = !self.preview_fullscreen;
+        self.message = Some(format!(
+            "logs {}",
+            if self.preview_fullscreen {
+                "fullscreen"
+            } else {
+                "split"
+            }
+        ));
+    }
+
     fn toggle_pretty(&mut self) {
         self.output_options.pretty = !self.output_options.pretty;
         self.message = Some(format!(
@@ -822,8 +836,13 @@ impl ExploreSession {
         } else {
             self.output.input.trim()
         };
+        let layout = if self.preview_fullscreen {
+            "logs:full"
+        } else {
+            "logs:split"
+        };
         let mut status = format!(
-            "{} matches | editing:{active} | {pretty} | {level} | {scroll} | output:{output}",
+            "{} matches | editing:{active} | {pretty} | {level} | {layout} | {scroll} | output:{output}",
             self.preview.match_count
         );
         if let Some(message) = &self.message {
@@ -1210,6 +1229,10 @@ fn handle_key(
             session.toggle_active_input();
             None
         }
+        KeyCode::Char('g') if modifiers.contains(KeyModifiers::CONTROL) => {
+            session.toggle_preview_fullscreen();
+            None
+        }
         KeyCode::Char('f') if modifiers.contains(KeyModifiers::CONTROL) => {
             session.toggle_pretty();
             None
@@ -1324,10 +1347,17 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
         .constraints([Constraint::Length(3), Constraint::Length(3)])
         .split(outer[0]);
 
-    let body = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(36), Constraint::Percentage(64)])
-        .split(outer[1]);
+    let body = if session.preview_fullscreen {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(100)])
+            .split(outer[1])
+    } else {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(36), Constraint::Percentage(64)])
+            .split(outer[1])
+    };
 
     let filter_width = inputs[0].width.saturating_sub(2);
     let (filter_input, filter_cursor_column) = filter_view(
@@ -1363,57 +1393,62 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
     let cursor_x = cursor_area.x + 1 + cursor_column;
     frame.set_cursor_position(Position::new(cursor_x, cursor_area.y + 1));
 
-    let fields = session
-        .data
-        .fields
-        .iter()
-        .skip(session.preview.field_scroll)
-        .take(body[0].height.saturating_sub(2) as usize)
-        .map(|field| {
-            let required = if field.optional {
-                "optional"
-            } else {
-                "required"
-            };
-            let examples = if field.examples.is_empty() {
-                String::new()
-            } else {
-                format!("  e.g. {}", field.examples.join(", "))
-            };
-            ListItem::new(Line::from(vec![
-                Span::styled(
-                    field.path.clone(),
-                    Style::default().add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(format!(
-                    "  {}  {required}  {}/{} docs{examples}",
-                    field.types.join("|"),
-                    field.documents,
-                    session.data.values.len(),
-                )),
-            ]))
-        })
-        .collect::<Vec<_>>();
-    frame.render_widget(
-        List::new(fields).block(
-            Block::default()
-                .title(if session.data.fields.is_empty() {
-                    "Fields 0/0".to_owned()
+    let preview_area = if session.preview_fullscreen {
+        body[0]
+    } else {
+        let fields = session
+            .data
+            .fields
+            .iter()
+            .skip(session.preview.field_scroll)
+            .take(body[0].height.saturating_sub(2) as usize)
+            .map(|field| {
+                let required = if field.optional {
+                    "optional"
                 } else {
-                    format!(
-                        "Fields {}/{}",
-                        session
-                            .preview
-                            .field_scroll
-                            .saturating_add(1)
-                            .min(session.data.fields.len()),
-                        session.data.fields.len()
-                    )
-                })
-                .borders(Borders::ALL),
-        ),
-        body[0],
-    );
+                    "required"
+                };
+                let examples = if field.examples.is_empty() {
+                    String::new()
+                } else {
+                    format!("  e.g. {}", field.examples.join(", "))
+                };
+                ListItem::new(Line::from(vec![
+                    Span::styled(
+                        field.path.clone(),
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(format!(
+                        "  {}  {required}  {}/{} docs{examples}",
+                        field.types.join("|"),
+                        field.documents,
+                        session.data.values.len(),
+                    )),
+                ]))
+            })
+            .collect::<Vec<_>>();
+        frame.render_widget(
+            List::new(fields).block(
+                Block::default()
+                    .title(if session.data.fields.is_empty() {
+                        "Fields 0/0".to_owned()
+                    } else {
+                        format!(
+                            "Fields {}/{}",
+                            session
+                                .preview
+                                .field_scroll
+                                .saturating_add(1)
+                                .min(session.data.fields.len()),
+                            session.data.fields.len()
+                        )
+                    })
+                    .borders(Borders::ALL),
+            ),
+            body[0],
+        );
+        body[1]
+    };
 
     let preview_lines = if let Some(error) = &session.filter.error {
         vec![Line::styled(
@@ -1435,7 +1470,7 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
             .wrap(Wrap { trim: false })
             .scroll((session.preview.preview_scroll, 0))
             .block(Block::default().title("Preview").borders(Borders::ALL)),
-        body[1],
+        preview_area,
     );
 
     let status = session.status_line();
@@ -1449,11 +1484,11 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
     });
     let hint = if let Some(stream_status) = stream_status {
         format!(
-            "{status}\n{stream_status}\nCtrl-O input | Tab complete | Ctrl-F pretty | Ctrl-L level color | Ctrl-K color off/on | Ctrl-P/N history | Enter print | Ctrl-Y jq | Ctrl-S save | Esc quit"
+            "{status}\n{stream_status}\nCtrl-O input | Ctrl-G logs | Tab complete | Ctrl-F pretty | Ctrl-L level color | Ctrl-K color off/on | Ctrl-P/N history | Enter print | Ctrl-Y jq | Ctrl-S save | Esc quit"
         )
     } else {
         format!(
-            "{status}\nCtrl-O input | Tab complete | Ctrl-F pretty | Ctrl-L level color | Ctrl-K color off/on | Ctrl-P/N history | Enter print | Ctrl-Y jq | Ctrl-S save | Esc quit"
+            "{status}\nCtrl-O input | Ctrl-G logs | Tab complete | Ctrl-F pretty | Ctrl-L level color | Ctrl-K color off/on | Ctrl-P/N history | Enter print | Ctrl-Y jq | Ctrl-S save | Esc quit"
         )
     };
     let hint_style = if session.filter.error.is_some() {
@@ -1667,6 +1702,28 @@ mod tests {
     }
 
     #[test]
+    fn toggles_preview_fullscreen() {
+        let config = ExploreConfig {
+            max_input_bytes: 1024 * 1024,
+            max_schema_documents: 10,
+            max_preview_results: 10,
+            max_schema_depth: 4,
+        };
+        let mut session = ExploreSession::new(
+            Vec::new(),
+            String::new(),
+            String::new(),
+            config,
+            output::OutputOptions::plain(),
+        );
+
+        handle_key(&mut session, KeyCode::Char('g'), KeyModifiers::CONTROL);
+
+        assert!(session.preview_fullscreen);
+        assert!(session.status_line().contains("logs:full"));
+    }
+
+    #[test]
     fn autocomplete_cycles_candidates_with_type_info() {
         let values = parse_values(
             InputKind::Json,
@@ -1843,6 +1900,46 @@ mod tests {
 
         assert!(rendered.contains("stream live"));
         assert!(rendered.contains("Ctrl-O input"));
+    }
+
+    #[test]
+    fn render_fullscreen_logs_hides_fields_panel() {
+        let values = parse_values(
+            InputKind::Json,
+            br#"{"name":"Alice","status":"active"}"#,
+            false,
+        )
+        .unwrap();
+        let config = ExploreConfig {
+            max_input_bytes: 1024 * 1024,
+            max_schema_documents: 10,
+            max_preview_results: 10,
+            max_schema_depth: 4,
+        };
+        let mut session = ExploreSession::new(
+            values,
+            "name".to_owned(),
+            String::new(),
+            config,
+            output::OutputOptions::plain(),
+        );
+        session.preview_fullscreen = true;
+        let backend = TestBackend::new(100, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal.draw(|frame| render(frame, &session)).unwrap();
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+
+        assert!(!rendered.contains("Fields"));
+        assert!(rendered.contains("Preview"));
+        assert!(rendered.contains("Alice"));
+        assert!(rendered.contains("logs:full"));
     }
 
     #[test]

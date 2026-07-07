@@ -191,6 +191,7 @@ jgrep explore -w log.level=ERROR -p '[.timestamp, .log.level, .message]' logs.nd
 
 Useful TUI toggles:
 - `Ctrl-O` - switch between Filter and Output
+- `Ctrl-G` - toggle wide log preview and hide/show the field schema
 - `Ctrl-F` - toggle pretty JSON output
 - `Ctrl-L` - toggle log-level color for printed output
 - `Ctrl-K` - toggle colors off/on
