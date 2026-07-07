@@ -6,6 +6,7 @@ pub fn path_filter(path: &str) -> Result<String, String> {
     Ok(path_to_jq(path))
 }
 
+#[cfg(feature = "explore")]
 pub fn expression_to_jq(expression: &str) -> Result<String, String> {
     let expression = expression.trim();
     if expression.is_empty() {
@@ -23,6 +24,7 @@ pub fn expression_to_jq(expression: &str) -> Result<String, String> {
     }
 }
 
+#[cfg(feature = "explore")]
 pub fn output_expression_to_jq(expression: &str) -> Result<String, String> {
     let expression = expression.trim();
     if expression.is_empty() {
@@ -60,6 +62,7 @@ pub fn where_filters_to_select(filters: &[String]) -> Result<String, String> {
     Ok(format!("select({})", conditions.join(" and ")))
 }
 
+#[cfg(feature = "explore")]
 fn contains_condition_operator(input: &str) -> bool {
     ["!=", ">=", "<=", "=", ">", "<"]
         .iter()
@@ -159,6 +162,7 @@ mod tests {
         assert_eq!(path_filter("log-level").unwrap(), ".[\"log-level\"]");
     }
 
+    #[cfg(feature = "explore")]
     #[test]
     fn keeps_raw_output_expressions() {
         assert_eq!(
@@ -192,6 +196,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "explore")]
     #[test]
     fn expands_explore_expressions() {
         assert_eq!(expression_to_jq("").unwrap(), ".");

@@ -1,17 +1,20 @@
 mod cli;
 mod color;
+#[cfg(feature = "completion")]
 mod completion;
 mod discovery;
+#[cfg(feature = "explore")]
 mod explore;
 mod input;
 mod matcher;
 mod output;
+#[cfg(feature = "explore")]
 mod schema;
 mod shortcuts;
 
 use std::io::{self, BufRead, Read, Write};
 
-use cli::{Cli, Command};
+use cli::Cli;
 use input::{InputKind, Source};
 use matcher::Matcher;
 
@@ -26,8 +29,30 @@ pub fn main_entry() -> i32 {
     };
 
     match cli.command {
-        Some(Command::Completion { shell }) => completion::print_completion(&shell),
-        Some(Command::Explore(args)) => explore::run(args),
+        Some(cli::Command::Completion { shell }) => {
+            #[cfg(feature = "completion")]
+            {
+                completion::print_completion(&shell)
+            }
+            #[cfg(not(feature = "completion"))]
+            {
+                let _ = shell;
+                eprintln!("{NAME}: completion support is not enabled in this build");
+                2
+            }
+        }
+        Some(cli::Command::Explore(args)) => {
+            #[cfg(feature = "explore")]
+            {
+                explore::run(args)
+            }
+            #[cfg(not(feature = "explore"))]
+            {
+                let _ = args;
+                eprintln!("{NAME}: explore support is not enabled in this build");
+                2
+            }
+        }
         None => run(cli),
     }
 }
@@ -338,6 +363,7 @@ fn process_bytes(
 ) {
     let values = match input::parse_many(kind, &bytes) {
         Ok(values) => values,
+        #[cfg(feature = "yaml")]
         Err(e) if matches!(source, Source::Stdin) && kind == InputKind::Json => {
             match input::parse_many(InputKind::Yaml, &bytes) {
                 Ok(values) => values,
@@ -355,6 +381,7 @@ fn process_bytes(
         }
     };
 
+    #[cfg(feature = "yaml")]
     let values = if matches!(source, Source::Stdin)
         && kind == InputKind::Json
         && values.first().is_some_and(Result::is_err)

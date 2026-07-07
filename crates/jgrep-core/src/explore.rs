@@ -296,6 +296,9 @@ fn parse_values(
     allow_yaml_fallback: bool,
 ) -> Result<Vec<Val>, String> {
     let parsed = input::parse_many(kind, bytes)?;
+    #[cfg(not(feature = "yaml"))]
+    let _ = allow_yaml_fallback;
+    #[cfg(feature = "yaml")]
     if allow_yaml_fallback && kind == InputKind::Json && parsed.first().is_some_and(Result::is_err)
     {
         if let Ok(values) = input::parse_many(InputKind::Yaml, bytes) {
@@ -1615,6 +1618,7 @@ mod tests {
         assert_eq!(preview, [r#"{"name":"Alice","status":"active"}"#]);
     }
 
+    #[cfg(feature = "yaml")]
     #[test]
     fn unknown_extension_can_fall_back_to_yaml() {
         let dir = tempfile::tempdir().unwrap();

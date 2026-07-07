@@ -49,6 +49,7 @@ pub fn color_code_by_level(
     color_code_by_level_inner(source, color_level, no_color, color_level_field, true)
 }
 
+#[cfg(feature = "explore")]
 pub fn color_code_by_level_without_env(
     source: &Val,
     color_level: bool,

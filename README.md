@@ -44,6 +44,17 @@ cargo build --release -p jgrep
 
 The release profile is optimized for small native binaries with LTO and stripped symbols.
 
+Optional features can be disabled for smaller binaries:
+
+| Build | Command | Linux x64 size |
+|-------|---------|----------------|
+| Minimal JSON/NDJSON CLI | `cargo build --release -p jgrep --no-default-features` | 1.8M / 1,858,008 bytes |
+| Minimal + YAML | `cargo build --release -p jgrep --no-default-features --features yaml` | 1.9M / 1,935,192 bytes |
+| Minimal + completion | `cargo build --release -p jgrep --no-default-features --features completion` | 1.9M / 1,926,312 bytes |
+| Minimal + explore TUI | `cargo build --release -p jgrep --no-default-features --features explore` | 2.1M / 2,157,984 bytes |
+| Minimal + explore TUI + YAML | `cargo build --release -p jgrep --no-default-features --features explore,yaml` | 2.2M / 2,235,488 bytes |
+| Full CLI, YAML, completion, explore TUI | `cargo build --release -p jgrep` | 2.2M / 2,301,184 bytes |
+
 ## Usage
 
 ### jgrep

@@ -25,7 +25,7 @@ impl OutputOptions {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "explore"))]
     pub fn plain() -> Self {
         Self {
             pretty: false,
@@ -75,6 +75,7 @@ pub fn write_result(
     Ok(())
 }
 
+#[cfg(feature = "explore")]
 pub fn format_result(result: &Val, source: &Val, options: &OutputOptions) -> io::Result<String> {
     let output = format_display_value(result, options)?;
     Ok(colorize_level_if_needed(&output, source, options))

@@ -1,11 +1,13 @@
 use std::path::{Path, PathBuf};
 
 use jaq_json::Val;
+#[cfg(feature = "yaml")]
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputKind {
     Json,
+    #[cfg(feature = "yaml")]
     Yaml,
 }
 
@@ -34,20 +36,30 @@ impl Source {
 pub fn kind_for_path(path: &Path) -> Option<InputKind> {
     match path.extension().and_then(|e| e.to_str()) {
         Some("json") => Some(InputKind::Json),
+        #[cfg(feature = "yaml")]
         Some("yaml" | "yml") => Some(InputKind::Yaml),
         _ => None,
     }
 }
 
 pub fn detect_stdin_kind(bytes: &[u8]) -> InputKind {
-    let first = bytes
-        .iter()
-        .copied()
-        .find(|b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'));
+    #[cfg(not(feature = "yaml"))]
+    {
+        let _ = bytes;
+        InputKind::Json
+    }
 
-    match first {
-        Some(b'{' | b'[' | b'"' | b't' | b'f' | b'n' | b'-' | b'0'..=b'9') => InputKind::Json,
-        _ => InputKind::Yaml,
+    #[cfg(feature = "yaml")]
+    {
+        let first = bytes
+            .iter()
+            .copied()
+            .find(|b| !matches!(b, b' ' | b'\t' | b'\n' | b'\r'));
+
+        match first {
+            Some(b'{' | b'[' | b'"' | b't' | b'f' | b'n' | b'-' | b'0'..=b'9') => InputKind::Json,
+            _ => InputKind::Yaml,
+        }
     }
 }
 
@@ -74,6 +86,7 @@ pub fn trim_ascii_whitespace(bytes: &[u8]) -> &[u8] {
 pub fn parse_many(kind: InputKind, bytes: &[u8]) -> Result<Vec<Result<Val, String>>, String> {
     match kind {
         InputKind::Json => parse_json_many(bytes),
+        #[cfg(feature = "yaml")]
         InputKind::Yaml => parse_yaml_many(bytes),
     }
 }
@@ -92,6 +105,7 @@ fn parse_json_many(bytes: &[u8]) -> Result<Vec<Result<Val, String>>, String> {
     Ok(values)
 }
 
+#[cfg(feature = "yaml")]
 fn parse_yaml_many(bytes: &[u8]) -> Result<Vec<Result<Val, String>>, String> {
     let text = std::str::from_utf8(bytes).map_err(|e| e.to_string())?;
     Ok(yaml_serde::Deserializer::from_str(text)
