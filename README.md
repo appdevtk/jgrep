@@ -42,6 +42,8 @@ cargo build --release -p jgrep
 ./target/release/jgrep '.metadata.name' manifest.yaml
 ```
 
+The release profile is optimized for small native binaries with LTO and stripped symbols.
+
 ## Usage
 
 ### jgrep
