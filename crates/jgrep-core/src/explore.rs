@@ -975,13 +975,52 @@ fn preview_line_style(source: &Val, options: &output::OutputOptions) -> Style {
         options.no_color,
         options.color_level_field.as_deref(),
     ) {
-        Some("\u{1b}[36m") => Style::default().fg(Color::Cyan),
-        Some("\u{1b}[34m") => Style::default().fg(Color::Blue),
-        Some("\u{1b}[33m") => Style::default().fg(Color::Yellow),
-        Some("\u{1b}[35m") => Style::default().fg(Color::Magenta),
-        Some("\u{1b}[31m") => Style::default().fg(Color::Red),
-        Some("\u{1b}[1;31m") => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        Some("\u{1b}[36m") => Style::default().fg(Color::Black).bg(Color::Cyan),
+        Some("\u{1b}[34m") => Style::default().fg(Color::White).bg(Color::Blue),
+        Some("\u{1b}[33m") => Style::default().fg(Color::Black).bg(Color::Yellow),
+        Some("\u{1b}[35m") => Style::default().fg(Color::White).bg(Color::Magenta),
+        Some("\u{1b}[31m") => Style::default().fg(Color::White).bg(Color::Red),
+        Some("\u{1b}[1;31m") => Style::default()
+            .fg(Color::White)
+            .bg(Color::Red)
+            .add_modifier(Modifier::BOLD),
         _ => Style::default(),
+    }
+}
+
+fn preview_render_lines(session: &ExploreSession, width: u16) -> Vec<Line<'static>> {
+    if let Some(error) = &session.filter.error {
+        return vec![Line::styled(
+            pad_preview_line(&format!("error: {error}"), width),
+            Style::default().fg(Color::Red),
+        )];
+    }
+    if session.preview.lines.is_empty() {
+        return vec![Line::from("no matches")];
+    }
+
+    session
+        .preview
+        .lines
+        .iter()
+        .map(|line| {
+            let text = if line.style.bg.is_some() {
+                pad_preview_line(&line.text, width)
+            } else {
+                line.text.clone()
+            };
+            Line::styled(text, line.style)
+        })
+        .collect()
+}
+
+fn pad_preview_line(text: &str, width: u16) -> String {
+    let width = width as usize;
+    let len = text.chars().count();
+    if len >= width {
+        text.to_owned()
+    } else {
+        format!("{text}{}", " ".repeat(width - len))
     }
 }
 
@@ -1450,21 +1489,7 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
         body[1]
     };
 
-    let preview_lines = if let Some(error) = &session.filter.error {
-        vec![Line::styled(
-            format!("error: {error}"),
-            Style::default().fg(Color::Red),
-        )]
-    } else if session.preview.lines.is_empty() {
-        vec![Line::from("no matches")]
-    } else {
-        session
-            .preview
-            .lines
-            .iter()
-            .map(|line| Line::styled(line.text.clone(), line.style))
-            .collect::<Vec<_>>()
-    };
+    let preview_lines = preview_render_lines(session, preview_area.width.saturating_sub(2));
     frame.render_widget(
         Paragraph::new(preview_lines)
             .wrap(Wrap { trim: false })
@@ -1669,7 +1694,47 @@ mod tests {
             .preview
             .lines
             .iter()
-            .any(|line| line.style.fg == Some(Color::Red)));
+            .any(|line| line.style.bg == Some(Color::Red)));
+    }
+
+    #[test]
+    fn render_level_color_uses_visible_line_background() {
+        let values = parse_values(
+            InputKind::Json,
+            br#"{"log":{"level":"ERROR"},"message":"boom"}"#,
+            false,
+        )
+        .unwrap();
+        let config = ExploreConfig {
+            max_input_bytes: 1024 * 1024,
+            max_schema_documents: 10,
+            max_preview_results: 10,
+            max_schema_depth: 4,
+        };
+        let mut session = ExploreSession::new(
+            values,
+            String::new(),
+            "message".to_owned(),
+            config,
+            output::OutputOptions {
+                pretty: false,
+                json_color: false,
+                color_level: true,
+                no_color: false,
+                color_level_field: None,
+            },
+        );
+        session.preview_fullscreen = true;
+        let backend = TestBackend::new(100, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal.draw(|frame| render(frame, &session)).unwrap();
+        let buffer = terminal.backend().buffer();
+
+        assert!(buffer
+            .content()
+            .iter()
+            .any(|cell| cell.symbol() == "b" && cell.bg == Color::Red));
     }
 
     #[test]
