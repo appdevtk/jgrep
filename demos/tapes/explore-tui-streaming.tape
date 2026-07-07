@@ -25,7 +25,7 @@ Wait+Screen /fallback/
 Wait+Screen /stream/
 Ctrl+F
 Ctrl+L
-Wait+Screen /level-color:on/
+Wait+Screen /color:on/
 Ctrl+G
 Ctrl+O
 Sleep 500ms
@@ -34,6 +34,10 @@ Wait+Screen /payment declined/
 Wait+Screen /fallback charge failed/
 Wait+Screen /trace_id/
 Wait+Screen /logs:full/
+Down
+Down
+Down
+Wait+Screen /scroll:4/
 Sleep 6s
 
 Escape

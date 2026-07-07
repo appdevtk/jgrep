@@ -195,8 +195,8 @@ Useful TUI toggles:
 - `Ctrl-F` - toggle pretty JSON output
 - `Ctrl-L` - toggle log-level color for printed output
 - `Ctrl-K` - toggle colors off/on
-- `Up`/`Down` - scroll fields while editing Filter, scroll preview while editing Output
-- `PageUp`/`PageDown` - scroll preview
+- `Up`/`Down` - scroll fields while editing Filter, scroll preview while editing Output or wide logs
+- `PageUp`/`PageDown` or mouse wheel - scroll preview
 - `Enter` - print current results
 - `Ctrl-Y` - print the generated jq expression
 

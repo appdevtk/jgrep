@@ -4,7 +4,10 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+    MouseEvent, MouseEventKind,
+};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -358,6 +361,13 @@ struct PreviewState {
 #[derive(Clone)]
 struct PreviewLine {
     text: String,
+    style: Style,
+    badge: Option<PreviewBadge>,
+}
+
+#[derive(Clone, Copy)]
+struct PreviewBadge {
+    label: &'static str,
     style: Style,
 }
 
@@ -818,9 +828,9 @@ impl ExploreSession {
             "pretty:off"
         };
         let level = if self.output_options.color_level && !self.output_options.no_color {
-            "level-color:on"
+            "color:on"
         } else {
-            "level-color:off"
+            "color:off"
         };
         let scroll = if self.preview.lines.is_empty() {
             "scroll:0/0".to_owned()
@@ -831,18 +841,13 @@ impl ExploreSession {
                 self.preview.lines.len()
             )
         };
-        let output = if self.output.input.trim().is_empty() {
-            "."
-        } else {
-            self.output.input.trim()
-        };
         let layout = if self.preview_fullscreen {
             "logs:full"
         } else {
             "logs:split"
         };
         let mut status = format!(
-            "{} matches | editing:{active} | {pretty} | {level} | {layout} | {scroll} | output:{output}",
+            "{} matches | {active} | {pretty} | {level} | {layout} | {scroll}",
             self.preview.match_count
         );
         if let Some(message) = &self.message {
@@ -947,17 +952,19 @@ fn preview_tui_values(
             match_count += 1;
             let text = output::format_result(&result, value, &display_options)
                 .map_err(|e| e.to_string())?;
-            let style = preview_line_style(value, options);
+            let (style, badge) = preview_line_style(value, options);
             for line in text.lines() {
                 lines.push(PreviewLine {
                     text: line.to_owned(),
                     style,
+                    badge,
                 });
             }
             if text.is_empty() {
                 lines.push(PreviewLine {
                     text: String::new(),
                     style,
+                    badge,
                 });
             }
             if match_count >= limit {
@@ -968,24 +975,43 @@ fn preview_tui_values(
     Ok(TuiPreview { lines, match_count })
 }
 
-fn preview_line_style(source: &Val, options: &output::OutputOptions) -> Style {
+fn preview_line_style(
+    source: &Val,
+    options: &output::OutputOptions,
+) -> (Style, Option<PreviewBadge>) {
     match color::color_code_by_level_without_env(
         source,
         options.color_level,
         options.no_color,
         options.color_level_field.as_deref(),
     ) {
-        Some("\u{1b}[36m") => Style::default().fg(Color::Black).bg(Color::Cyan),
-        Some("\u{1b}[34m") => Style::default().fg(Color::White).bg(Color::Blue),
-        Some("\u{1b}[33m") => Style::default().fg(Color::Black).bg(Color::Yellow),
-        Some("\u{1b}[35m") => Style::default().fg(Color::White).bg(Color::Magenta),
-        Some("\u{1b}[31m") => Style::default().fg(Color::White).bg(Color::Red),
-        Some("\u{1b}[1;31m") => Style::default()
-            .fg(Color::White)
-            .bg(Color::Red)
-            .add_modifier(Modifier::BOLD),
-        _ => Style::default(),
+        Some("\u{1b}[36m") => level_preview_style("INFO", Style::default().fg(Color::Indexed(51))),
+        Some("\u{1b}[34m") => level_preview_style("DEBUG", Style::default().fg(Color::Indexed(75))),
+        Some("\u{1b}[33m") => level_preview_style("WARN", Style::default().fg(Color::Indexed(220))),
+        Some("\u{1b}[35m") => {
+            level_preview_style("TRACE", Style::default().fg(Color::Indexed(207)))
+        }
+        Some("\u{1b}[31m") => {
+            level_preview_style("ERROR", Style::default().fg(Color::Indexed(196)))
+        }
+        Some("\u{1b}[1;31m") => level_preview_style(
+            "FATAL",
+            Style::default()
+                .fg(Color::Indexed(196))
+                .add_modifier(Modifier::BOLD),
+        ),
+        _ => (Style::default(), None),
     }
+}
+
+fn level_preview_style(label: &'static str, style: Style) -> (Style, Option<PreviewBadge>) {
+    (
+        style,
+        Some(PreviewBadge {
+            label,
+            style: style.add_modifier(Modifier::BOLD),
+        }),
+    )
 }
 
 fn preview_render_lines(session: &ExploreSession, width: u16) -> Vec<Line<'static>> {
@@ -1004,12 +1030,27 @@ fn preview_render_lines(session: &ExploreSession, width: u16) -> Vec<Line<'stati
         .lines
         .iter()
         .map(|line| {
-            let text = if line.style.bg.is_some() {
-                pad_preview_line(&line.text, width)
+            if let Some(badge) = line.badge {
+                let badge_text = format!(" {:<5} ", badge.label);
+                let badge_width = badge_text.chars().count() as u16;
+                let text_width = width.saturating_sub(badge_width);
+                let text = if line.style.bg.is_some() {
+                    pad_preview_line(&line.text, text_width)
+                } else {
+                    line.text.clone()
+                };
+                Line::from(vec![
+                    Span::styled(badge_text, badge.style),
+                    Span::styled(text, line.style),
+                ])
             } else {
-                line.text.clone()
-            };
-            Line::styled(text, line.style)
+                let text = if line.style.bg.is_some() {
+                    pad_preview_line(&line.text, width)
+                } else {
+                    line.text.clone()
+                };
+                Line::from(Span::styled(text, line.style))
+            }
         })
         .collect()
 }
@@ -1133,13 +1174,17 @@ enum ExplorerExit {
 fn run_tui(session: &mut ExploreSession) -> io::Result<ExplorerExit> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
     let result = run_tui_loop(&mut terminal, session, None);
     let raw_mode_result = disable_raw_mode();
-    let screen_result = execute!(terminal.backend_mut(), LeaveAlternateScreen);
+    let screen_result = execute!(
+        terminal.backend_mut(),
+        DisableMouseCapture,
+        LeaveAlternateScreen
+    );
     let cursor_result = terminal.show_cursor();
 
     let exit = result?;
@@ -1155,13 +1200,17 @@ fn run_tui_streaming(
 ) -> io::Result<ExplorerExit> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
     let result = run_tui_loop(&mut terminal, session, Some(stream));
     let raw_mode_result = disable_raw_mode();
-    let screen_result = execute!(terminal.backend_mut(), LeaveAlternateScreen);
+    let screen_result = execute!(
+        terminal.backend_mut(),
+        DisableMouseCapture,
+        LeaveAlternateScreen
+    );
     let cursor_result = terminal.show_cursor();
 
     let exit = result?;
@@ -1187,15 +1236,14 @@ fn run_tui_loop(
             continue;
         }
 
-        let Event::Key(key) = event::read()? else {
-            continue;
-        };
-        if key.kind != KeyEventKind::Press {
-            continue;
-        }
-
-        if let Some(exit) = handle_key(session, key.code, key.modifiers) {
-            break exit;
+        match event::read()? {
+            Event::Key(key) if key.kind == KeyEventKind::Press => {
+                if let Some(exit) = handle_key(session, key.code, key.modifiers) {
+                    break exit;
+                }
+            }
+            Event::Mouse(mouse) => handle_mouse(session, mouse),
+            _ => {}
         }
     };
     Ok(result)
@@ -1317,7 +1365,7 @@ fn handle_key(
             None
         }
         KeyCode::Up => {
-            if session.active_input == ActiveInput::Output {
+            if session.preview_fullscreen || session.active_input == ActiveInput::Output {
                 session.scroll_preview(-1);
             } else {
                 session.scroll_fields(-1);
@@ -1325,7 +1373,7 @@ fn handle_key(
             None
         }
         KeyCode::Down => {
-            if session.active_input == ActiveInput::Output {
+            if session.preview_fullscreen || session.active_input == ActiveInput::Output {
                 session.scroll_preview(1);
             } else {
                 session.scroll_fields(1);
@@ -1349,6 +1397,14 @@ fn handle_key(
             None
         }
         _ => None,
+    }
+}
+
+fn handle_mouse(session: &mut ExploreSession, mouse: MouseEvent) {
+    match mouse.kind {
+        MouseEventKind::ScrollUp => session.scroll_preview(-3),
+        MouseEventKind::ScrollDown => session.scroll_preview(3),
+        _ => {}
     }
 }
 
@@ -1377,7 +1433,7 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
         .constraints([
             Constraint::Length(6),
             Constraint::Min(5),
-            Constraint::Length(5),
+            Constraint::Length(6),
         ])
         .split(frame.area());
 
@@ -1507,14 +1563,13 @@ fn render(frame: &mut Frame, session: &ExploreSession) {
             stream.errors.len()
         )
     });
+    let help_primary = "Ctrl-O input | Ctrl-G logs | Ctrl-F pretty | Ctrl-L color | Ctrl-K off/on";
+    let help_scroll =
+        "PgUp/PgDn/Wheel scroll | Ctrl-P/N history | Enter print | Ctrl-Y jq | Esc quit";
     let hint = if let Some(stream_status) = stream_status {
-        format!(
-            "{status}\n{stream_status}\nCtrl-O input | Ctrl-G logs | Tab complete | Ctrl-F pretty | Ctrl-L level color | Ctrl-K color off/on | Ctrl-P/N history | Enter print | Ctrl-Y jq | Ctrl-S save | Esc quit"
-        )
+        format!("{status}\n{stream_status}\n{help_primary}\n{help_scroll}")
     } else {
-        format!(
-            "{status}\nCtrl-O input | Ctrl-G logs | Tab complete | Ctrl-F pretty | Ctrl-L level color | Ctrl-K color off/on | Ctrl-P/N history | Enter print | Ctrl-Y jq | Ctrl-S save | Esc quit"
-        )
+        format!("{status}\n{help_primary}\n{help_scroll}")
     };
     let hint_style = if session.filter.error.is_some() {
         Style::default().fg(Color::Red)
@@ -1694,11 +1749,12 @@ mod tests {
             .preview
             .lines
             .iter()
-            .any(|line| line.style.bg == Some(Color::Red)));
+            .any(|line| line.style.fg == Some(Color::Indexed(196))
+                && line.badge.is_some_and(|badge| badge.label == "ERROR")));
     }
 
     #[test]
-    fn render_level_color_uses_visible_line_background() {
+    fn render_level_color_uses_visible_line_foreground() {
         let values = parse_values(
             InputKind::Json,
             br#"{"log":{"level":"ERROR"},"message":"boom"}"#,
@@ -1734,7 +1790,11 @@ mod tests {
         assert!(buffer
             .content()
             .iter()
-            .any(|cell| cell.symbol() == "b" && cell.bg == Color::Red));
+            .any(|cell| cell.symbol() == "b" && cell.fg == Color::Indexed(196)));
+        assert!(buffer
+            .content()
+            .iter()
+            .any(|cell| cell.symbol() == "E" && cell.fg == Color::Indexed(196)));
     }
 
     #[test]
@@ -1764,6 +1824,72 @@ mod tests {
         handle_key(&mut session, KeyCode::Down, KeyModifiers::NONE);
 
         assert_eq!(session.preview.preview_scroll, 1);
+    }
+
+    #[test]
+    fn fullscreen_logs_arrows_scroll_preview_even_from_filter() {
+        let values = parse_values(
+            InputKind::Json,
+            br#"{"items":[{"name":"a"},{"name":"b"},{"name":"c"}]}"#,
+            false,
+        )
+        .unwrap();
+        let config = ExploreConfig {
+            max_input_bytes: 1024 * 1024,
+            max_schema_documents: 10,
+            max_preview_results: 10,
+            max_schema_depth: 4,
+        };
+        let mut session = ExploreSession::new(
+            values,
+            String::new(),
+            ".".to_owned(),
+            config,
+            output::OutputOptions::plain(),
+        );
+        handle_key(&mut session, KeyCode::Char('f'), KeyModifiers::CONTROL);
+        handle_key(&mut session, KeyCode::Char('g'), KeyModifiers::CONTROL);
+
+        handle_key(&mut session, KeyCode::Down, KeyModifiers::NONE);
+
+        assert_eq!(session.active_input, ActiveInput::Filter);
+        assert_eq!(session.preview.preview_scroll, 1);
+    }
+
+    #[test]
+    fn mouse_wheel_scrolls_preview() {
+        let values = parse_values(
+            InputKind::Json,
+            br#"{"items":[{"name":"a"},{"name":"b"},{"name":"c"}]}"#,
+            false,
+        )
+        .unwrap();
+        let config = ExploreConfig {
+            max_input_bytes: 1024 * 1024,
+            max_schema_documents: 10,
+            max_preview_results: 10,
+            max_schema_depth: 4,
+        };
+        let mut session = ExploreSession::new(
+            values,
+            String::new(),
+            ".".to_owned(),
+            config,
+            output::OutputOptions::plain(),
+        );
+        handle_key(&mut session, KeyCode::Char('f'), KeyModifiers::CONTROL);
+
+        handle_mouse(
+            &mut session,
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 10,
+                row: 10,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+
+        assert_eq!(session.preview.preview_scroll, 3);
     }
 
     #[test]
@@ -1934,7 +2060,7 @@ mod tests {
         assert!(rendered.contains("Fields 1/2"));
         assert!(rendered.contains("Preview"));
         assert!(rendered.contains("Alice"));
-        assert!(rendered.contains("Tab complete"));
+        assert!(rendered.contains("PgUp/PgDn/Wheel scroll"));
     }
 
     #[test]
