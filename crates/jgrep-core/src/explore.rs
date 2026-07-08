@@ -14,7 +14,7 @@ use crossterm::terminal::{
 };
 use jaq_json::Val;
 use ratatui::backend::CrosstermBackend;
-use ratatui::layout::{Constraint, Direction, Layout, Position};
+use ratatui::layout::{Constraint, Direction, Layout, Position, Rect, Size};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
@@ -988,19 +988,25 @@ fn preview_line_style(
         options.no_color,
         options.color_level_field.as_deref(),
     ) {
-        Some("\u{1b}[36m") => level_preview_style("INFO", Style::default().fg(Color::Indexed(51))),
-        Some("\u{1b}[34m") => level_preview_style("DEBUG", Style::default().fg(Color::Indexed(75))),
-        Some("\u{1b}[33m") => level_preview_style("WARN", Style::default().fg(Color::Indexed(220))),
+        Some("\u{1b}[36m") => {
+            level_preview_style("INFO", Style::default().fg(Color::Rgb(80, 220, 235)))
+        }
+        Some("\u{1b}[34m") => {
+            level_preview_style("DEBUG", Style::default().fg(Color::Rgb(120, 170, 255)))
+        }
+        Some("\u{1b}[33m") => {
+            level_preview_style("WARN", Style::default().fg(Color::Rgb(255, 205, 80)))
+        }
         Some("\u{1b}[35m") => {
-            level_preview_style("TRACE", Style::default().fg(Color::Indexed(207)))
+            level_preview_style("TRACE", Style::default().fg(Color::Rgb(235, 120, 255)))
         }
         Some("\u{1b}[31m") => {
-            level_preview_style("ERROR", Style::default().fg(Color::Indexed(196)))
+            level_preview_style("ERROR", Style::default().fg(Color::Rgb(255, 80, 90)))
         }
         Some("\u{1b}[1;31m") => level_preview_style(
             "FATAL",
             Style::default()
-                .fg(Color::Indexed(196))
+                .fg(Color::Rgb(255, 80, 90))
                 .add_modifier(Modifier::BOLD),
         ),
         _ => (Style::default(), None),
@@ -1234,6 +1240,7 @@ fn run_tui_loop(
         }
 
         terminal.draw(|frame| render(frame, session))?;
+        overlay_colored_preview_lines(terminal, session)?;
 
         if !event::poll(Duration::from_millis(150))? {
             continue;
@@ -1250,6 +1257,138 @@ fn run_tui_loop(
         }
     };
     Ok(result)
+}
+
+fn overlay_colored_preview_lines(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    session: &ExploreSession,
+) -> io::Result<()> {
+    // VHS captures explicit foreground escapes reliably for the preview overlay.
+    let size = terminal.size()?;
+    let area = Rect::new(0, 0, size.width, size.height);
+    let preview_area = preview_area_for(area, session.preview_fullscreen);
+    let inner_width = preview_area.width.saturating_sub(2) as usize;
+    let inner_height = preview_area.height.saturating_sub(2) as usize;
+    if inner_width == 0 || inner_height == 0 {
+        return Ok(());
+    }
+
+    let mut stdout = io::stdout();
+    for (row, line) in session
+        .preview
+        .lines
+        .iter()
+        .skip(session.preview.preview_scroll as usize)
+        .take(inner_height)
+        .enumerate()
+    {
+        let Some(badge) = line.badge else {
+            continue;
+        };
+        let Some(color) = ansi_foreground(line.style.fg) else {
+            continue;
+        };
+
+        let text = truncate_chars(&format!(" {:<5} {}", badge.label, line.text), inner_width);
+        write!(
+            stdout,
+            "\x1b[{};{}H{}{}\x1b[0m",
+            preview_area.y + 2 + row as u16,
+            preview_area.x + 2,
+            color,
+            text
+        )?;
+    }
+
+    let cursor = input_cursor_position(size, session);
+    write!(stdout, "\x1b[{};{}H", cursor.y + 1, cursor.x + 1)?;
+    stdout.flush()
+}
+
+fn ansi_foreground(color: Option<Color>) -> Option<String> {
+    match color? {
+        Color::Black => Some("\x1b[30m".to_owned()),
+        Color::Red => Some("\x1b[31m".to_owned()),
+        Color::Green => Some("\x1b[32m".to_owned()),
+        Color::Yellow => Some("\x1b[33m".to_owned()),
+        Color::Blue => Some("\x1b[34m".to_owned()),
+        Color::Magenta => Some("\x1b[35m".to_owned()),
+        Color::Cyan => Some("\x1b[36m".to_owned()),
+        Color::Gray => Some("\x1b[37m".to_owned()),
+        Color::DarkGray => Some("\x1b[90m".to_owned()),
+        Color::LightRed => Some("\x1b[91m".to_owned()),
+        Color::LightGreen => Some("\x1b[92m".to_owned()),
+        Color::LightYellow => Some("\x1b[93m".to_owned()),
+        Color::LightBlue => Some("\x1b[94m".to_owned()),
+        Color::LightMagenta => Some("\x1b[95m".to_owned()),
+        Color::LightCyan => Some("\x1b[96m".to_owned()),
+        Color::White => Some("\x1b[97m".to_owned()),
+        Color::Indexed(index) => Some(format!("\x1b[38;5;{index}m")),
+        Color::Rgb(r, g, b) => Some(format!("\x1b[38;2;{r};{g};{b}m")),
+        Color::Reset => None,
+    }
+}
+
+fn truncate_chars(text: &str, width: usize) -> String {
+    text.chars().take(width).collect()
+}
+
+fn preview_area_for(area: Rect, preview_fullscreen: bool) -> Rect {
+    let outer = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(6),
+            Constraint::Min(5),
+            Constraint::Length(6),
+        ])
+        .split(area);
+    let body = if preview_fullscreen {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(100)])
+            .split(outer[1])
+    } else {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(36), Constraint::Percentage(64)])
+            .split(outer[1])
+    };
+
+    if preview_fullscreen {
+        body[0]
+    } else {
+        body[1]
+    }
+}
+
+fn input_cursor_position(size: Size, session: &ExploreSession) -> Position {
+    let area = Rect::new(0, 0, size.width, size.height);
+    let outer = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(6),
+            Constraint::Min(5),
+            Constraint::Length(6),
+        ])
+        .split(area);
+    let inputs = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Length(3)])
+        .split(outer[0]);
+    let (cursor_area, input, cursor) = match session.active_input {
+        ActiveInput::Filter => (
+            inputs[0],
+            session.filter.text.input.as_str(),
+            session.filter.text.cursor,
+        ),
+        ActiveInput::Output => (
+            inputs[1],
+            session.output.input.as_str(),
+            session.output.cursor,
+        ),
+    };
+    let (_, cursor_column) = filter_view(input, cursor, cursor_area.width.saturating_sub(2));
+    Position::new(cursor_area.x + 1 + cursor_column, cursor_area.y + 1)
 }
 
 fn drain_stream(session: &mut ExploreSession, stream: &Receiver<StreamEvent>) {
@@ -1753,7 +1892,7 @@ mod tests {
             .preview
             .lines
             .iter()
-            .any(|line| line.style.fg == Some(Color::Indexed(196))
+            .any(|line| line.style.fg == Some(Color::Rgb(255, 80, 90))
                 && line.badge.is_some_and(|badge| badge.label == "ERROR")));
     }
 
@@ -1794,11 +1933,11 @@ mod tests {
         assert!(buffer
             .content()
             .iter()
-            .any(|cell| cell.symbol() == "b" && cell.fg == Color::Indexed(196)));
+            .any(|cell| cell.symbol() == "b" && cell.fg == Color::Rgb(255, 80, 90)));
         assert!(buffer
             .content()
             .iter()
-            .any(|cell| cell.symbol() == "E" && cell.fg == Color::Indexed(196)));
+            .any(|cell| cell.symbol() == "E" && cell.fg == Color::Rgb(255, 80, 90)));
     }
 
     #[test]
