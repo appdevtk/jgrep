@@ -13,7 +13,7 @@ yaml = ["dep:serde", "dep:yaml_serde", "jaq-json/serde"]
 [dependencies]
 clap.workspace = true
 clap_complete = { workspace = true, optional = true }
-crossterm = { version = "0.28.1", optional = true }
+crossterm = { version = "0.28.1", features = ["use-dev-tty"], optional = true }
 jaq-core.workspace = true
 jaq-json.workspace = true
 jaq-std.workspace = true
