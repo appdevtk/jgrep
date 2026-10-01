@@ -1,0 +1,52 @@
+plugins:
+  jgrep-pod-logs:
+    shortCut: Shift-J
+    description: jgrep live logs
+    scopes: [po]
+    command: {{JGREP}}
+    background: false
+    override: true
+    dangerous: false
+    args:
+      - k9s
+      - logs
+      - --context=$CONTEXT
+      - --namespace=$NAMESPACE
+      - --name=$NAME
+      - --kubeconfig=$KUBECONFIG
+      - {{KUBECTL_ARG}}
+  jgrep-container-logs:
+    shortCut: Shift-K
+    description: jgrep container logs
+    scopes: [containers]
+    command: {{JGREP}}
+    background: false
+    override: true
+    dangerous: false
+    args:
+      - k9s
+      - logs
+      - --context=$CONTEXT
+      - --namespace=$NAMESPACE
+      - --name=$POD
+      - --container=$NAME
+      - --kubeconfig=$KUBECONFIG
+      - {{KUBECTL_ARG}}
+  jgrep-resource:
+    shortCut: Shift-U
+    description: jgrep resource JSON
+    scopes: [po, deploy, sts, ds, svc, job, cj]
+    command: {{JGREP}}
+    background: false
+    override: false
+    dangerous: false
+    args:
+      - k9s
+      - resource
+      - --context=$CONTEXT
+      - --namespace=$NAMESPACE
+      - --name=$NAME
+      - --resource=$RESOURCE_NAME
+      - --group=$RESOURCE_GROUP
+      - --kubeconfig=$KUBECONFIG
+      - {{KUBECTL_ARG}}

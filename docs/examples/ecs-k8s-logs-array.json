@@ -1,0 +1,110 @@
+[
+  {
+    "@timestamp": "2026-07-02T08:14:03.118Z",
+    "ecs.version": "8.11.0",
+    "log.level": "INFO",
+    "message": "checkout request accepted",
+    "service.name": "checkout-api",
+    "service.version": "2.8.4",
+    "event.dataset": "checkout-api.app",
+    "trace.id": "4f1d9a55c7b2465dbb63dc1d3d6e91a2",
+    "span.id": "7d0b88cb9bdc2a77",
+    "custom_tracker": {
+      "trace_id": "cart-7182",
+      "tenant": "acme-retail",
+      "release": "2026.07.02"
+    },
+    "kubernetes": {
+      "namespace": "shop",
+      "pod": "checkout-api-7c9b6c6f8d-x4l2p",
+      "container": "checkout-api",
+      "node": "ip-10-42-1-17.us-west-2.compute.internal",
+      "labels": {
+        "app.kubernetes.io/name": "checkout-api",
+        "app.kubernetes.io/part-of": "storefront",
+        "pod-template-hash": "7c9b6c6f8d"
+      }
+    },
+    "cloud.provider": "aws",
+    "orchestrator.cluster.name": "prod-usw2-a",
+    "http.request.method": "POST",
+    "url.path": "/checkout",
+    "http.response.status_code": 202,
+    "event.duration": 37400000
+  },
+  {
+    "@timestamp": "2026-07-02T08:14:06.044Z",
+    "ecs.version": "8.11.0",
+    "log.level": "ERROR",
+    "message": "payment authorization failed",
+    "service.name": "payment-api",
+    "service.version": "4.12.2",
+    "event.dataset": "payment-api.app",
+    "trace.id": "4f1d9a55c7b2465dbb63dc1d3d6e91a2",
+    "span.id": "78fc43bcae9f6112",
+    "custom_tracker": {
+      "trace_id": "cart-7182",
+      "tenant": "acme-retail",
+      "release": "2026.07.02"
+    },
+    "kubernetes": {
+      "namespace": "shop",
+      "pod": "payment-api-69d88bd54c-m7v4r",
+      "container": "payment-api",
+      "node": "ip-10-42-2-12.us-west-2.compute.internal",
+      "labels": {
+        "app.kubernetes.io/name": "payment-api",
+        "app.kubernetes.io/part-of": "storefront",
+        "pod-template-hash": "69d88bd54c"
+      }
+    },
+    "cloud.provider": "aws",
+    "orchestrator.cluster.name": "prod-usw2-a",
+    "error": {
+      "type": "PaymentDeclined",
+      "message": "issuer declined authorization",
+      "stack_trace": "PaymentDeclined: issuer declined authorization\n    at authorize (/srv/app/payment.js:91:11)"
+    },
+    "http.request.method": "POST",
+    "url.path": "/payments/authorize",
+    "http.response.status_code": 402,
+    "event.duration": 284000000
+  },
+  {
+    "@timestamp": "2026-07-02T08:16:41.772Z",
+    "ecs.version": "8.11.0",
+    "log.level": "ERROR",
+    "message": "ingress returned upstream timeout",
+    "service.name": "edge-gateway",
+    "service.version": "6.5.0",
+    "event.dataset": "edge-gateway.access",
+    "trace.id": "9fb4283d3da441fb9b6a3cfbc94fa820",
+    "span.id": "da3bb26f9501cc72",
+    "custom_tracker": {
+      "trace_id": "req-9910",
+      "tenant": "beta-outlet",
+      "release": "2026.07.02"
+    },
+    "kubernetes": {
+      "namespace": "edge",
+      "pod": "edge-gateway-66bb8ddfdd-2t7wv",
+      "container": "envoy",
+      "node": "ip-10-42-1-6.us-west-2.compute.internal",
+      "labels": {
+        "app.kubernetes.io/name": "edge-gateway",
+        "app.kubernetes.io/part-of": "platform",
+        "pod-template-hash": "66bb8ddfdd"
+      }
+    },
+    "cloud.provider": "aws",
+    "orchestrator.cluster.name": "prod-usw2-a",
+    "http.request.method": "GET",
+    "url.path": "/api/products/sku-8831",
+    "http.response.status_code": 504,
+    "event.duration": 3001267000,
+    "error": {
+      "type": "UpstreamTimeout",
+      "message": "upstream request timed out after 3000ms"
+    }
+  }
+]

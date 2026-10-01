@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1
+FROM rust:1.96.0-bookworm@sha256:5e2214abe154fe26e39f64488952e5c991eeed1d6d6da7cc8381ae83927f0cfc AS build
+ARG MACOS_TARGET=aarch64-apple-darwin
+ENV SDKROOT=/opt/macos-sdk MACOSX_DEPLOYMENT_TARGET=11.0
+RUN case "$MACOS_TARGET" in aarch64-apple-darwin|x86_64-apple-darwin) ;; *) exit 2 ;; esac && \
+    rustup target add "$MACOS_TARGET"
+WORKDIR /src
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates/ ./crates/
+COPY plugins/k9s-jgrep/plugins.yaml ./plugins/k9s-jgrep/plugins.yaml
+# Supply Apple's locally installed SDK as a named context. It is mounted only
+# for linking, never copied into an image layer or the exported artifact.
+RUN --mount=type=bind,from=macos-sdk,target=/opt/macos-sdk \
+    --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    test -f "$SDKROOT/usr/lib/libSystem.tbd" && \
+    linker="$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin/rust-lld" && \
+    RUSTFLAGS="-C linker=$linker -C linker-flavor=ld64.lld -C link-arg=-syslibroot -C link-arg=$SDKROOT" \
+    cargo build --locked --release -p jgrep --target "$MACOS_TARGET" && \
+    cp "target/$MACOS_TARGET/release/jgrep" /jgrep
+
+FROM scratch AS binary
+COPY --from=build /jgrep /jgrep

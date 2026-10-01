@@ -1,0 +1,3 @@
+{"@timestamp":"2026-07-04T08:12:00Z","log":{"level":"INFO"},"service":{"name":"checkout"},"message":"request accepted"}
+{"@timestamp":"2026-07-04T08:13:11Z","log":{"level":"ERROR"},"service":{"name":"checkout"},"message":"payment declined","trace":{"id":"trc-9182"}}
+{"@timestamp":"2026-07-04T08:14:03Z","log":{"level":"WARN"},"service":{"name":"catalog"},"message":"slow upstream response"}

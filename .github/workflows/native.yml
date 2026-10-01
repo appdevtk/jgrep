@@ -13,60 +13,52 @@ permissions:
   contents: read
 
 jobs:
+  quality:
+    name: Release quality gate
+    if: startsWith(github.ref, 'refs/tags/')
+    uses: ./.github/workflows/ci.yml
+
   linux-native:
-    name: Linux native — ${{ matrix.module }}
+    name: Linux native jgrep
     runs-on: ubuntu-24.04
-    strategy:
-      matrix:
-        module: [jgrep, ygrep]
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up Java
-        uses: actions/setup-java@v5
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
-          distribution: temurin
-          java-version: "25"
-          cache: maven
-          cache-dependency-path: "**/pom.xml"
+          toolchain: 1.96.0
 
-      - name: Install shared module
-        run: ./jgrep/mvnw -B -ntp install -N -DskipTests && ./jgrep/mvnw -B -ntp install -pl shared -DskipTests
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
-      - name: Build native (Docker container)
-        working-directory: ${{ matrix.module }}
-        run: ./mvnw -B -ntp package -Pnative -Dquarkus.native.container-build=true -DskipTests
+      - name: Build release binary
+        run: cargo build --locked --release -p jgrep
 
       - name: Smoke test
         run: |
-          runner=$(ls ${{ matrix.module }}/target/${{ matrix.module }}-*-runner | head -1)
-          "$runner" --version
-          if [ "${{ matrix.module }}" = "jgrep" ]; then
-            printf '%s\n' '{"name":"Alice"}' | "$runner" '.name'
-            "$runner" completion bash | grep -- '--from-file'
-          else
-            printf 'service:\n  name: checkout\n' | "$runner" '.service.name'
-            "$runner" completion bash | grep -- '--from-file'
-          fi
+          target/release/jgrep --version
+          printf '%s\n' '{"name":"Alice"}' | target/release/jgrep '.name'
+          printf 'service:\n  name: checkout\n' | target/release/jgrep '.service.name'
+          target/release/jgrep completion bash | grep -- '--from-file'
 
       - name: Prepare release asset
         run: |
-          runner=$(ls ${{ matrix.module }}/target/${{ matrix.module }}-*-runner | head -1)
-          mkdir -p ${{ matrix.module }}/target/dist
-          cp "$runner" ${{ matrix.module }}/target/dist/${{ matrix.module }}
-          chmod +x ${{ matrix.module }}/target/dist/${{ matrix.module }}
+          mkdir -p target/dist
+          cp target/release/jgrep target/dist/jgrep
+          chmod +x target/dist/jgrep
 
       - name: Upload Linux native executable
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: ${{ matrix.module }}-linux-x64
-          path: ${{ matrix.module }}/target/dist/${{ matrix.module }}
+          name: jgrep-linux-x64
+          path: target/dist/jgrep
           if-no-files-found: error
 
   macos-native:
-    name: macOS native — ${{ matrix.module }} (${{ matrix.arch }})
+    name: macOS native jgrep (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -74,87 +66,67 @@ jobs:
         include:
           - runner: macos-15
             arch: arm64
-            module: jgrep
             artifact: jgrep-macos-arm64
           - runner: macos-15-intel
             arch: x64
-            module: jgrep
             artifact: jgrep-macos-x64
-          - runner: macos-15
-            arch: arm64
-            module: ygrep
-            artifact: ygrep-macos-arm64
-          - runner: macos-15-intel
-            arch: x64
-            module: ygrep
-            artifact: ygrep-macos-x64
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up GraalVM
-        uses: graalvm/setup-graalvm@v1
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
-          distribution: graalvm
-          java-version: "25"
-          native-image-job-reports: true
+          toolchain: 1.96.0
 
-      - name: Install shared module
-        run: ./jgrep/mvnw -B -ntp install -N -DskipTests && ./jgrep/mvnw -B -ntp install -pl shared -DskipTests
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
-      - name: Build native (GraalVM)
-        working-directory: ${{ matrix.module }}
-        run: ./mvnw -B -ntp package -Dnative -DskipTests
+      - name: Build release binary
+        run: cargo build --locked --release -p jgrep
 
       - name: Smoke test
         run: |
-          runner=$(ls ${{ matrix.module }}/target/${{ matrix.module }}-*-runner | head -1)
-          "$runner" --version
-          if [ "${{ matrix.module }}" = "jgrep" ]; then
-            printf '%s\n' '{"name":"Alice"}' | "$runner" '.name'
-          else
-            printf 'service:\n  name: checkout\n' | "$runner" '.service.name'
-          fi
+          target/release/jgrep --version
+          printf '%s\n' '{"name":"Alice"}' | target/release/jgrep '.name'
+          printf 'service:\n  name: checkout\n' | target/release/jgrep '.service.name'
 
       - name: Package native executable
         run: |
-          runner=$(ls ${{ matrix.module }}/target/${{ matrix.module }}-*-runner | head -1)
-          mkdir -p ${{ matrix.module }}/target/dist
-          cp "$runner" ${{ matrix.module }}/target/dist/${{ matrix.module }}
-          chmod +x ${{ matrix.module }}/target/dist/${{ matrix.module }}
-          tar -czf ${{ matrix.module }}/target/dist/${{ matrix.artifact }}.tar.gz \
-            -C ${{ matrix.module }}/target/dist ${{ matrix.module }}
+          mkdir -p target/dist
+          cp target/release/jgrep target/dist/jgrep
+          chmod +x target/dist/jgrep
+          tar -czf target/dist/${{ matrix.artifact }}.tar.gz -C target/dist jgrep
 
       - name: Upload native executable
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.module }}/target/dist/${{ matrix.artifact }}.tar.gz
+          path: target/dist/${{ matrix.artifact }}.tar.gz
           if-no-files-found: error
 
   release:
     name: Publish release assets
-    needs: [linux-native, macos-native]
+    needs: [quality, linux-native, macos-native]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
 
     steps:
-      - name: Download Linux binaries
-        uses: actions/download-artifact@v8
+      - name: Download release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          pattern: "*-linux-x64"
-          path: release-assets/binaries
+          pattern: "jgrep-*"
+          path: release-assets
           merge-multiple: true
 
-      - name: Download macOS archives
-        uses: actions/download-artifact@v8
-        with:
-          pattern: "*-macos-*"
-          path: release-assets/archives
-          merge-multiple: true
+      - name: Generate checksums
+        run: |
+          cd release-assets
+          sha256sum jgrep jgrep-macos-*.tar.gz > SHA256SUMS
+          sha256sum -c SHA256SUMS
 
       - name: Publish GitHub release
         env:
@@ -164,8 +136,8 @@ jobs:
         run: |
           ls -lR release-assets
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" release-assets/binaries/* release-assets/archives/* --clobber
+            gh release upload "$TAG_NAME" release-assets/jgrep* release-assets/SHA256SUMS --clobber
           else
-            gh release create "$TAG_NAME" release-assets/binaries/* release-assets/archives/* \
+            gh release create "$TAG_NAME" release-assets/jgrep* release-assets/SHA256SUMS \
               --title "$TAG_NAME" --generate-notes --verify-tag
           fi

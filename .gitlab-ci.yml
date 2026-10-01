@@ -1,0 +1,52 @@
+image: rust:1.96
+
+stages:
+  - verify
+  - package
+
+variables:
+  CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
+
+cache:
+  key:
+    files:
+      - Cargo.lock
+  paths:
+    - .cargo/registry/
+    - .cargo/git/
+    - target/
+
+before_script:
+  - rustup component add rustfmt clippy
+
+verify:
+  stage: verify
+  script:
+    - cargo fmt --check
+    - cargo clippy --workspace --all-targets --all-features -- -D warnings
+    - cargo test --workspace --all-features
+    - cargo check -p jgrep --no-default-features
+    - cargo check -p jgrep --no-default-features --features yaml
+    - cargo check -p jgrep --no-default-features --features completion
+    - cargo check -p jgrep --no-default-features --features explore
+    - cargo check -p jgrep --no-default-features --features explore,yaml
+    - cargo install cargo-audit --version 0.22.2 --locked
+    - "$CARGO_HOME/bin/cargo-audit --deny warnings"
+
+package-linux-x64:
+  stage: package
+  needs:
+    - verify
+  script:
+    - cargo build --locked --release -p jgrep
+    - target/release/jgrep --version
+    - printf '%s\n' '{"name":"Alice"}' | target/release/jgrep '.name'
+    - mkdir -p dist
+    - cp target/release/jgrep dist/jgrep
+    - sha256sum dist/jgrep > dist/SHA256SUMS
+  artifacts:
+    name: "jgrep-linux-x64-$CI_COMMIT_REF_SLUG"
+    paths:
+      - dist/jgrep
+      - dist/SHA256SUMS
+    expire_in: 90 days

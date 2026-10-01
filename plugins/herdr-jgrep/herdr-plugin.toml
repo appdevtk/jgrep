@@ -1,0 +1,42 @@
+id = "jgrep.explorer"
+name = "jgrep Explorer"
+version = "0.1.0"
+min_herdr_version = "0.7.0"
+description = "Explore JSON, NDJSON, and YAML with jgrep inside Herdr"
+platforms = ["linux", "macos"]
+
+[[actions]]
+id = "open"
+title = "Open jgrep explorer"
+contexts = ["workspace"]
+command = ["scripts/open-explorer.sh"]
+
+[[actions]]
+id = "filter-selection"
+title = "Filter selected JSON/YAML"
+contexts = ["workspace"]
+command = ["scripts/filter-selection.sh"]
+
+[[actions]]
+id = "install-completion"
+title = "Install jgrep shell completion"
+contexts = ["workspace"]
+command = ["scripts/install-completion.sh"]
+
+[[actions]]
+id = "open-error-logs"
+title = "Open error logs"
+contexts = ["workspace"]
+command = ["scripts/open-logs.sh"]
+
+[[actions]]
+id = "print-last-filter"
+title = "Print last jq filter"
+contexts = ["workspace"]
+command = ["scripts/print-last-filter.sh"]
+
+[[panes]]
+id = "explorer"
+title = "jgrep"
+placement = "split"
+command = ["jgrep", "explore"]

@@ -1,0 +1,11 @@
+**
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!crates/
+!crates/**
+!plugins/
+!plugins/k9s-jgrep/
+!plugins/k9s-jgrep/plugins.yaml
+crates/**/target/
+crates/**/.DS_Store

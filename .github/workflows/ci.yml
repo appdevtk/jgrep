@@ -6,40 +6,71 @@ on:
       - main
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    name: JVM build & test
+  docker-build:
+    name: Docker-only Linux binary build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check Dockerfile
+        run: docker build --check .
+      - name: Check macOS Dockerfile
+        # Syntax checks do not compile or read SDK files. Real cross-builds use
+        # a locally installed Apple SDK on macOS, never a redistributed SDK.
+        run: docker build --check -f Dockerfile.macos --build-context macos-sdk=. .
+      - name: Export standalone binary
+        run: docker build --output type=local,dest=dist .
+      - name: Smoke test exported Linux binary
+        run: |
+          ./dist/jgrep --version
+          test "$(printf '%s\n' '{"1.2":"literal"}' | ./dist/jgrep -p 1.2)" = literal
+          test "$(printf 'service:\n  name: checkout\n' | ./dist/jgrep '.service.name')" = checkout
+          ./dist/jgrep completion bash
+
+  rust:
+    name: Rust build, lint, and test
     runs-on: ubuntu-24.04
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Set up Java
-        uses: actions/setup-java@v5
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
-          distribution: temurin
-          java-version: "25"
-          cache: maven
-          cache-dependency-path: "**/pom.xml"
+          toolchain: 1.96.0
+          components: rustfmt, clippy
 
-      - name: Build and test all modules
-        run: ./jgrep/mvnw -B -ntp verify
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
-      - name: Upload jgrep JVM package
-        uses: actions/upload-artifact@v6
-        with:
-          name: jgrep-jvm-quarkus-app
-          path: jgrep/target/quarkus-app/**
-          if-no-files-found: error
+      - name: Check formatting
+        run: cargo fmt --check
 
-      - name: Upload ygrep JVM package
-        uses: actions/upload-artifact@v6
-        with:
-          name: ygrep-jvm-quarkus-app
-          path: ygrep/target/quarkus-app/**
-          if-no-files-found: error
+      - name: Lint
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+
+      - name: Test
+        run: cargo test --locked --workspace --all-features
+
+      - name: Test interactive explorer
+        run: python3 scripts/test-tui.py target/debug/jgrep
+
+      - name: Test supported feature sets
+        run: |
+          cargo test --locked --workspace --no-default-features
+          cargo test --locked --workspace --no-default-features --features jgrep/yaml
+          cargo test --locked --workspace --no-default-features --features jgrep/completion
+          cargo test --locked --workspace --no-default-features --features jgrep/explore
+          cargo test --locked --workspace --no-default-features --features jgrep/explore,jgrep/yaml
+
+      - name: Audit dependencies
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo audit --deny warnings

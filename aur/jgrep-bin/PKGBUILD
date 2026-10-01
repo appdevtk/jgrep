@@ -2,7 +2,7 @@
 pkgname=jgrep-bin
 pkgver=1.3.0
 pkgrel=1
-pkgdesc="grep for JSON — filter structured files using jq expressions (pre-built binary)"
+pkgdesc="grep for JSON, NDJSON, and YAML using jq expressions (pre-built binary)"
 arch=('x86_64')
 url="https://github.com/subnix-work/jgrep"
 license=('Apache-2.0')
